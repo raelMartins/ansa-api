@@ -37,6 +37,10 @@ export function unauthorized(message = "Authentication required"): AppError {
   return new AppError(401, "UNAUTHORIZED", message);
 }
 
+export function forbidden(message = "Not allowed"): AppError {
+  return new AppError(403, "FORBIDDEN", message);
+}
+
 export function notFound(message = "Not found"): AppError {
   return new AppError(404, "NOT_FOUND", message);
 }

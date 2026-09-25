@@ -3,6 +3,7 @@ import { sendData } from "../shared/http.js";
 import { authRouter } from "./auth/index.js";
 import { healthRouter } from "./health/health.routes.js";
 import { liveness } from "./health/health.service.js";
+import { merchantShopRouter, publicShopRouter } from "./shop/index.js";
 
 /**
  * Single HTTP mount point for the modular monolith.
@@ -20,4 +21,6 @@ export function mountHttp(app: Express, deps: { authLimiter: RequestHandler }): 
 
   app.use("/v1", healthRouter);
   app.use("/v1/auth", deps.authLimiter, authRouter);
+  app.use("/v1/me/shop", merchantShopRouter);
+  app.use("/v1/shops", publicShopRouter);
 }

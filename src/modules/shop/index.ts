@@ -1,5 +1,6 @@
 /**
- * Product module shell. Do not query other modules' tables from here.
- * Implement when the founder asks for this product — not before.
+ * shop — merchant catalog (v1 slice).
+ * Owns `shops` and `products`. Does not touch payments or delivery tables.
  */
-export const moduleName = "shop" as const;
+export { merchantShopRouter } from "./shop.merchant.routes.js";
+export { publicShopRouter } from "./shop.public.routes.js";

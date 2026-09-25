@@ -4,7 +4,8 @@ info:
   version: 0.1.0
   description: |
     Modular-monolith HTTP API for the ansa ecosystem (B-Koda Limited).
-    Product modules (shop, delivery, jobs, locate, check, meets) are reserved and not exposed yet.
+    Shop v1 slice: merchant catalog (create shop/products, public published product read).
+    Payments, escrow, and delivery are not exposed.
   license:
     name: UNLICENSED
 servers:
@@ -139,7 +140,183 @@ paths:
           description: Profile
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /v1/me/shop:
+    post:
+      tags: [Shop]
+      summary: Create the merchant shop (one per account)
+      operationId: createShop
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShopRequest"
+      responses:
+        "201":
+          description: Shop created
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      tags: [Shop]
+      summary: Get the authenticated merchant's shop
+      operationId: getMyShop
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Shop
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: No shop yet
+    patch:
+      tags: [Shop]
+      summary: Update the merchant shop
+      operationId: updateMyShop
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateShopRequest"
+      responses:
+        "200":
+          description: Updated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/me/shop/products:
+    post:
+      tags: [Shop]
+      summary: Create a product
+      operationId: createProduct
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+      responses:
+        "201":
+          description: Product created
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Merchant has no shop
+    get:
+      tags: [Shop]
+      summary: List the merchant's products (all statuses)
+      operationId: listMyProducts
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Product list
+  /v1/me/shop/products/{productId}:
+    get:
+      tags: [Shop]
+      summary: Get one of the merchant's products
+      operationId: getMyProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/productId"
+      responses:
+        "200":
+          description: Product
+        "404":
+          description: Not found
+    patch:
+      tags: [Shop]
+      summary: Update a product
+      operationId: updateMyProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/productId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductRequest"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      tags: [Shop]
+      summary: Archive a product (soft delete)
+      operationId: archiveMyProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/productId"
+      responses:
+        "200":
+          description: Archived
+  /v1/shops/{shopSlug}:
+    get:
+      tags: [Shop]
+      summary: Public shop profile
+      operationId: getPublicShop
+      parameters:
+        - $ref: "#/components/parameters/shopSlug"
+      responses:
+        "200":
+          description: Shop
+        "404":
+          description: Not found
+  /v1/shops/{shopSlug}/products:
+    get:
+      tags: [Shop]
+      summary: List published products for a shop
+      operationId: listPublicProducts
+      parameters:
+        - $ref: "#/components/parameters/shopSlug"
+      responses:
+        "200":
+          description: Published products only
+  /v1/shops/{shopSlug}/products/{productSlug}:
+    get:
+      tags: [Shop]
+      summary: Retrieve a published product
+      operationId: getPublicProduct
+      parameters:
+        - $ref: "#/components/parameters/shopSlug"
+        - $ref: "#/components/parameters/productSlug"
+      responses:
+        "200":
+          description: Published product
+        "404":
+          description: Missing, draft, or archived
 components:
+  parameters:
+    productId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    shopSlug:
+      name: shopSlug
+      in: path
+      required: true
+      schema:
+        type: string
+    productSlug:
+      name: productSlug
+      in: path
+      required: true
+      schema:
+        type: string
   securitySchemes:
     bearerAuth:
       type: http
@@ -253,3 +430,56 @@ components:
                 expiresIn:
                   type: string
                   example: 15m
+    CreateShopRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+    UpdateShopRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+          nullable: true
+    CreateProductRequest:
+      type: object
+      required: [title, priceKobo]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priceKobo:
+          type: integer
+          minimum: 0
+          description: Price in kobo (NGN minor units). 150000 = ₦1,500.00
+        status:
+          type: string
+          enum: [draft, published]
+          default: published
+        slug:
+          type: string
+    UpdateProductRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priceKobo:
+          type: integer
+        status:
+          type: string
+          enum: [draft, published, archived]
+        slug:
+          type: string

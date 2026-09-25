@@ -49,7 +49,9 @@ Default local URL: `http://localhost:5000` (`PORT` in `.env`). Leave 3000 for we
 3. Export a router from that module.
 4. Mount it in `src/modules/http.ts` (the only HTTP composition point).
 
-Empty shells (`shop`, `delivery`, …) exist as folders only. Do not mount them until they have real routes.
+Empty shells (`delivery`, `jobs`, …) exist as folders only. Do not mount them until they have real routes.
+
+Shop v1 (mounted): authenticated `/v1/me/shop` and public `/v1/shops/:slug`. Prices are integer **kobo**. `DELETE` archives a product; drafts/archived are hidden from public GETs.
 
 ## Module boundaries
 
