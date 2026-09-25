@@ -40,6 +40,16 @@ Default local URL: `http://localhost:5000` (`PORT` in `.env`). Leave 3000 for we
 | `pnpm migrate:down` | Roll back the last migration |
 | `pnpm test` | Vitest |
 | `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm lint` | ESLint |
+
+## Adding a product module
+
+1. Keep tables and SQL in `migrations/`, owned by that module (comment the owner).
+2. Put queries in `src/modules/<name>/` — never query another module’s tables.
+3. Export a router from that module.
+4. Mount it in `src/modules/http.ts` (the only HTTP composition point).
+
+Empty shells (`shop`, `delivery`, …) exist as folders only. Do not mount them until they have real routes.
 
 ## Module boundaries
 

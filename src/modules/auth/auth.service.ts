@@ -5,11 +5,11 @@ import { conflict, unauthorized } from "../../shared/errors.js";
 import { isUniqueViolation } from "../../shared/pg.js";
 import { ansaIdFromUserId } from "../identity/index.js";
 import {
-  findUserByEmail,
-  findUserByEmailOrPhone,
-  findUserById,
-  findUserByPhone,
-  insertUser,
+  createUserAccount,
+  findAccountByEmail,
+  findAccountByEmailOrPhone,
+  findAccountById,
+  findAccountByPhone,
   toPublicUser,
   type PublicUser,
 } from "../users/index.js";
@@ -97,39 +97,39 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
   const email = input.email ?? null;
   const phone = input.phone ?? null;
 
-  if (email && (await findUserByEmail(db, email))) {
+  if (email && (await findAccountByEmail(db, email))) {
     throw conflict("An account with this email already exists");
   }
-  if (phone && (await findUserByPhone(db, phone))) {
+  if (phone && (await findAccountByPhone(db, phone))) {
     throw conflict("An account with this phone already exists");
   }
 
   const passwordHash = await hashPassword(input.password);
-  let row;
+  let account;
   try {
-    row = await insertUser(db, { email, phone, passwordHash });
+    account = await createUserAccount(db, { email, phone, passwordHash });
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw conflict("An account with this email or phone already exists");
     }
     throw err;
   }
-  const tokens = await issueTokens(row.id);
-  return { user: withAnsaId(toPublicUser(row)), tokens };
+  const tokens = await issueTokens(account.id);
+  return { user: withAnsaId(toPublicUser(account)), tokens };
 }
 
 export async function login(input: LoginInput): Promise<AuthResult> {
   const db = getPool();
-  const row = await findUserByEmailOrPhone(db, { email: input.email, phone: input.phone });
-  if (!row) {
+  const account = await findAccountByEmailOrPhone(db, { email: input.email, phone: input.phone });
+  if (!account) {
     throw unauthorized("Invalid credentials");
   }
-  const ok = await verifyPassword(input.password, row.password_hash);
+  const ok = await verifyPassword(input.password, account.passwordHash);
   if (!ok) {
     throw unauthorized("Invalid credentials");
   }
-  const tokens = await issueTokens(row.id);
-  return { user: withAnsaId(toPublicUser(row)), tokens };
+  const tokens = await issueTokens(account.id);
+  return { user: withAnsaId(toPublicUser(account)), tokens };
 }
 
 export async function refresh(refreshToken: string): Promise<AuthTokens> {
@@ -148,9 +148,9 @@ export async function logout(refreshToken: string): Promise<void> {
 }
 
 export async function getMe(userId: string): Promise<PublicUser & { ansaId: string }> {
-  const row = await findUserById(getPool(), userId);
-  if (!row) {
+  const account = await findAccountById(getPool(), userId);
+  if (!account) {
     throw unauthorized();
   }
-  return withAnsaId(toPublicUser(row));
+  return withAnsaId(toPublicUser(account));
 }

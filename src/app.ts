@@ -4,10 +4,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
-import { authRouter } from "./modules/auth/index.js";
-import { healthRouter } from "./modules/health/health.routes.js";
-import { liveness } from "./modules/health/health.service.js";
-import { sendData } from "./shared/http.js";
+import { mountHttp } from "./modules/http.js";
 import { logger } from "./shared/logger.js";
 import { errorHandler, notFoundHandler } from "./shared/middleware/error-handler.js";
 import { requestId } from "./shared/middleware/request-id.js";
@@ -58,12 +55,7 @@ export function createApp(): Express {
     },
   });
 
-  app.get("/health", (_req, res) => {
-    sendData(res, liveness());
-  });
-
-  app.use("/v1", healthRouter);
-  app.use("/v1/auth", authLimiter, authRouter);
+  mountHttp(app, { authLimiter });
 
   app.use(notFoundHandler);
   app.use(errorHandler);

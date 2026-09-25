@@ -1,13 +1,15 @@
 /**
  * users — account records.
- * Other modules must call this public surface, not query `users` directly.
+ * Other modules must use this public surface, not `users.repository`.
  */
-export { getPublicUserById, toPublicUser, type PublicUser } from "./users.service.js";
 export {
-  findUserByEmail,
-  findUserByEmailOrPhone,
-  findUserById,
-  findUserByPhone,
-  insertUser,
-  type UserRow,
-} from "./users.repository.js";
+  createUserAccount,
+  findAccountByEmail,
+  findAccountByEmailOrPhone,
+  findAccountById,
+  findAccountByPhone,
+  getPublicUserById,
+  toPublicUser,
+  type PublicUser,
+  type UserAccount,
+} from "./users.service.js";

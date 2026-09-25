@@ -11,7 +11,7 @@ const schema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: ttl.default("15m"),
   JWT_REFRESH_TTL: ttl.default("30d"),
-  CORS_ORIGINS: z.string().default("http://localhost:5173"),
+  CORS_ORIGINS: z.string().default("http://localhost:5173,http://localhost:3000"),
 });
 
 export type Env = z.infer<typeof schema> & {

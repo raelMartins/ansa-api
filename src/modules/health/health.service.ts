@@ -13,7 +13,7 @@ export function liveness(): HealthStatus {
 export async function readiness(): Promise<HealthStatus> {
   try {
     await getPool().query("SELECT 1");
-  } catch (err) {
+  } catch {
     throw serviceUnavailable("Database unavailable");
   }
   return { status: "ok", service: "ansa-api" };

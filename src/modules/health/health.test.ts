@@ -23,4 +23,10 @@ describe("health", () => {
     const res = await request(app).get("/v1/health");
     expect(res.status).toBe(200);
   });
+
+  it("returns 503 on /v1/ready when the database is not configured", async () => {
+    const res = await request(app).get("/v1/ready");
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("SERVICE_UNAVAILABLE");
+  });
 });
