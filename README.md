@@ -15,13 +15,10 @@ This repository is the platform foundation. Product domains (shop, delivery, job
 
 ```bash
 cp .env.example .env
-docker compose up -d
 pnpm install
-pnpm migrate
-pnpm dev
 ```
 
-From the workspace root (`ansa/`): `pnpm api:dev` (and `pnpm api:migrate`, `pnpm api:test`, …).
+From the workspace root (`ansa/`): `pnpm docker:up` (Postgres), then `pnpm api:migrate`, `pnpm api:dev`. Shop UI: `pnpm shop:dev` (port 3000). `pnpm docker:down` stops the database container.
 
 Default local URL: `http://localhost:5000` (`PORT` in `.env`). Leave 3000 for web clients.
 
