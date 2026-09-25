@@ -37,6 +37,7 @@ export type PublicProduct = {
   currency: string;
   status: ProductStatus;
   slug: string;
+  imageUrls: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -61,6 +62,7 @@ function toPublicProduct(row: ProductRow): PublicProduct {
     currency: row.currency,
     status: row.status,
     slug: row.slug,
+    imageUrls: row.image_urls ?? [],
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -158,7 +160,14 @@ async function requireOwnedProduct(ownerUserId: string, productId: string): Prom
 
 export async function createProduct(
   ownerUserId: string,
-  input: { title: string; description?: string; priceKobo: number; status: "draft" | "published"; slug?: string },
+  input: {
+    title: string;
+    description?: string;
+    priceKobo: number;
+    status: "draft" | "published";
+    slug?: string;
+    imageUrls?: string[];
+  },
 ): Promise<PublicProduct> {
   const shop = await requireOwnedShop(ownerUserId);
   const slug = await uniqueProductSlug(shop.id, input.slug ?? slugify(input.title));
@@ -170,6 +179,7 @@ export async function createProduct(
       priceKobo: input.priceKobo,
       status: input.status,
       slug,
+      imageUrls: input.imageUrls,
     });
     return toPublicProduct(row);
   } catch (err) {
@@ -199,6 +209,7 @@ export async function updateMyProduct(
     priceKobo?: number;
     status?: ProductStatus;
     slug?: string;
+    imageUrls?: string[];
   },
 ): Promise<PublicProduct> {
   await requireOwnedProduct(ownerUserId, productId);

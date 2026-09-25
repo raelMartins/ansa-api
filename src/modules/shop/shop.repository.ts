@@ -21,9 +21,13 @@ export type ProductRow = {
   currency: string;
   status: ProductStatus;
   slug: string;
+  image_urls: string[];
   created_at: Date;
   updated_at: Date;
 };
+
+const PRODUCT_COLS =
+  "id, shop_id, title, description, price_kobo, currency, status, slug, image_urls, created_at, updated_at";
 
 export async function insertShop(
   db: Queryable,
@@ -96,13 +100,22 @@ export async function insertProduct(
     priceKobo: number;
     status: ProductStatus;
     slug: string;
+    imageUrls?: string[];
   },
 ): Promise<ProductRow> {
   const { rows } = await db.query<ProductRow>(
-    `INSERT INTO products (shop_id, title, description, price_kobo, status, slug)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, shop_id, title, description, price_kobo, currency, status, slug, created_at, updated_at`,
-    [input.shopId, input.title, input.description, input.priceKobo, input.status, input.slug],
+    `INSERT INTO products (shop_id, title, description, price_kobo, status, slug, image_urls)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING ${PRODUCT_COLS}`,
+    [
+      input.shopId,
+      input.title,
+      input.description,
+      input.priceKobo,
+      input.status,
+      input.slug,
+      input.imageUrls ?? [],
+    ],
   );
   const row = rows[0];
   if (!row) throw new Error("insertProduct returned no row");
@@ -111,7 +124,7 @@ export async function insertProduct(
 
 export async function listProductsByShop(db: Queryable, shopId: string): Promise<ProductRow[]> {
   const { rows } = await db.query<ProductRow>(
-    `SELECT id, shop_id, title, description, price_kobo, currency, status, slug, created_at, updated_at
+    `SELECT ${PRODUCT_COLS}
      FROM products
      WHERE shop_id = $1
      ORDER BY created_at DESC`,
@@ -122,7 +135,7 @@ export async function listProductsByShop(db: Queryable, shopId: string): Promise
 
 export async function listPublishedProductsByShop(db: Queryable, shopId: string): Promise<ProductRow[]> {
   const { rows } = await db.query<ProductRow>(
-    `SELECT id, shop_id, title, description, price_kobo, currency, status, slug, created_at, updated_at
+    `SELECT ${PRODUCT_COLS}
      FROM products
      WHERE shop_id = $1 AND status = 'published'
      ORDER BY created_at DESC`,
@@ -133,7 +146,7 @@ export async function listPublishedProductsByShop(db: Queryable, shopId: string)
 
 export async function findProductById(db: Queryable, id: string): Promise<ProductRow | undefined> {
   const { rows } = await db.query<ProductRow>(
-    `SELECT id, shop_id, title, description, price_kobo, currency, status, slug, created_at, updated_at
+    `SELECT ${PRODUCT_COLS}
      FROM products WHERE id = $1`,
     [id],
   );
@@ -146,7 +159,7 @@ export async function findProductByShopAndSlug(
   slug: string,
 ): Promise<ProductRow | undefined> {
   const { rows } = await db.query<ProductRow>(
-    `SELECT id, shop_id, title, description, price_kobo, currency, status, slug, created_at, updated_at
+    `SELECT ${PRODUCT_COLS}
      FROM products WHERE shop_id = $1 AND slug = $2`,
     [shopId, slug],
   );
@@ -162,6 +175,7 @@ export async function updateProductRow(
     priceKobo?: number;
     status?: ProductStatus;
     slug?: string;
+    imageUrls?: string[];
   },
 ): Promise<ProductRow> {
   const { rows } = await db.query<ProductRow>(
@@ -171,9 +185,10 @@ export async function updateProductRow(
          price_kobo = COALESCE($5, price_kobo),
          status = COALESCE($6, status),
          slug = COALESCE($7, slug),
+         image_urls = COALESCE($8, image_urls),
          updated_at = now()
      WHERE id = $1
-     RETURNING id, shop_id, title, description, price_kobo, currency, status, slug, created_at, updated_at`,
+     RETURNING ${PRODUCT_COLS}`,
     [
       id,
       patch.title ?? null,
@@ -182,6 +197,7 @@ export async function updateProductRow(
       patch.priceKobo ?? null,
       patch.status ?? null,
       patch.slug ?? null,
+      patch.imageUrls ?? null,
     ],
   );
   const row = rows[0];

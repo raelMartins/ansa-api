@@ -468,6 +468,12 @@ components:
           default: published
         slug:
           type: string
+        imageUrls:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+            format: uri
     UpdateProductRequest:
       type: object
       properties:
@@ -483,3 +489,9 @@ components:
           enum: [draft, published, archived]
         slug:
           type: string
+        imageUrls:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+            format: uri

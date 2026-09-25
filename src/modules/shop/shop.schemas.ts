@@ -23,12 +23,20 @@ export const updateShopSchema = z
     message: "Provide at least one field to update",
   });
 
+const httpUrl = z
+  .string()
+  .trim()
+  .url()
+  .max(2000)
+  .refine((u) => u.startsWith("http://") || u.startsWith("https://"), "Use an http(s) image URL");
+
 export const createProductSchema = z.object({
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().max(5000).optional(),
   priceKobo: z.number().int().min(0).max(1_000_000_000),
   status: z.enum(["draft", "published"]).default("published"),
   slug: slug.optional(),
+  imageUrls: z.array(httpUrl).max(8).optional(),
 });
 
 export const updateProductSchema = z
@@ -38,6 +46,7 @@ export const updateProductSchema = z
     priceKobo: z.number().int().min(0).max(1_000_000_000).optional(),
     status: z.enum(["draft", "published", "archived"]).optional(),
     slug: slug.optional(),
+    imageUrls: z.array(httpUrl).max(8).optional(),
   })
   .refine(
     (v) =>
@@ -45,7 +54,8 @@ export const updateProductSchema = z
       v.description !== undefined ||
       v.priceKobo !== undefined ||
       v.status !== undefined ||
-      v.slug !== undefined,
+      v.slug !== undefined ||
+      v.imageUrls !== undefined,
     { message: "Provide at least one field to update" },
   );
 

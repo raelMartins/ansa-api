@@ -46,11 +46,17 @@ describe("shop vertical slice", () => {
     const createdProduct = await request(app)
       .post("/v1/me/shop/products")
       .set(auth(token))
-      .send({ title: "Blue Ankara", priceKobo: 150000, description: "6 yards" });
+      .send({
+        title: "Blue Ankara",
+        priceKobo: 150000,
+        description: "6 yards",
+        imageUrls: ["https://picsum.photos/id/1015/800/800"],
+      });
     expect(createdProduct.status).toBe(201);
     expect(createdProduct.body.data.product.status).toBe("published");
     expect(createdProduct.body.data.product.priceKobo).toBe(150000);
     expect(createdProduct.body.data.product.currency).toBe("NGN");
+    expect(createdProduct.body.data.product.imageUrls).toEqual(["https://picsum.photos/id/1015/800/800"]);
 
     const productId = createdProduct.body.data.product.id as string;
 
