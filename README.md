@@ -21,6 +21,10 @@ pnpm migrate
 pnpm dev
 ```
 
+From the workspace root (`ansa/`): `pnpm api:dev` (and `pnpm api:migrate`, `pnpm api:test`, …).
+
+Default local URL: `http://localhost:5000` (`PORT` in `.env`). Leave 3000 for web clients.
+
 - Liveness: `GET /health` and `GET /v1/health`
 - Readiness: `GET /v1/ready` (needs Postgres)
 - OpenAPI: `docs/openapi.yaml`
