@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import cors from "cors";
 import express, { type Express } from "express";
 import rateLimit from "express-rate-limit";
@@ -5,6 +6,7 @@ import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
 import { mountHttp } from "./modules/http.js";
+import { getUploadsDir } from "./modules/shop/shop.service.js";
 import { logger } from "./shared/logger.js";
 import { errorHandler, notFoundHandler } from "./shared/middleware/error-handler.js";
 import { requestId } from "./shared/middleware/request-id.js";
@@ -29,6 +31,7 @@ export function createApp(): Express {
   app.use(
     helmet({
       contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: "cross-origin" },
     }),
   );
   app.use(
@@ -37,7 +40,9 @@ export function createApp(): Express {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "8mb" }));
+  mkdirSync(getUploadsDir(), { recursive: true });
+  app.use("/uploads", express.static(getUploadsDir()));
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,

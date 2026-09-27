@@ -1,2 +1,8 @@
-/** Platform notifications shell. Shared across products later. */
-export const moduleName = "notifications" as const;
+export { moduleName } from "./meta.js";
+export {
+  MockWhatsAppProvider,
+  MetaWhatsAppProvider,
+  resolveWhatsAppProvider,
+  renderTemplate,
+} from "./whatsapp.js";
+export type { WhatsAppProvider, WhatsAppTemplateKey } from "./whatsapp.js";

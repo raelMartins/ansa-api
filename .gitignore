@@ -9,4 +9,6 @@ coverage/
 .vscode/
 *.tsbuildinfo
 .eslintcache
+uploads/*
+!uploads/.gitkeep
 

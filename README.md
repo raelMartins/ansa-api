@@ -48,7 +48,7 @@ Default local URL: `http://localhost:5000` (`PORT` in `.env`). Leave 3000 for we
 
 Empty shells (`delivery`, `jobs`, …) exist as folders only. Do not mount them until they have real routes.
 
-Shop v1 (mounted): authenticated `/v1/me/shop` and public `/v1/shops/:slug`. Prices are integer **kobo**. `DELETE` archives a product; drafts/archived are hidden from public GETs.
+Shop prototype (mounted): merchant `/v1/me/shop/*`, orders `/v1/me/shop/orders`, checkout `/v1/checkout`, public `/v1/shops/:slug`, orders `/v1/orders/:reference`, mock pay `/v1/payments/mock/complete`. Prices are integer **kobo**. Run `pnpm seed` in `ansa-api` for demo data.
 
 ## Module boundaries
 

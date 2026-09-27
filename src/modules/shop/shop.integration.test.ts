@@ -19,7 +19,11 @@ function auth(token: string) {
 
 describe("shop vertical slice", () => {
   beforeEach(async () => {
-    await getPool().query("TRUNCATE TABLE products, shops, refresh_tokens, users CASCADE");
+    await getPool().query(
+      `TRUNCATE notification_events, shop_payments, shop_order_items, shop_orders,
+         catalog_publications, shop_whatsapp_settings, shop_integrations, products, shops,
+         refresh_tokens, users CASCADE`,
+    );
   });
 
   it("rejects unauthenticated merchant shop access", async () => {

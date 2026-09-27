@@ -12,6 +12,9 @@ const schema = z.object({
   JWT_ACCESS_TTL: ttl.default("15m"),
   JWT_REFRESH_TTL: ttl.default("30d"),
   CORS_ORIGINS: z.string().default("http://localhost:5173,http://localhost:3000"),
+  PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  PAYMENT_PROVIDER: z.enum(["mock", "paystack"]).default("mock"),
+  PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof schema> & {
