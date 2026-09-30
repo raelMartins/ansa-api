@@ -110,6 +110,6 @@ export function resolveSocialProvider(channel: Exclude<SocialChannel, "whatsapp"
   return new MockXProvider();
 }
 
-export function defaultCaption(input: { title: string; priceLabel: string; shopName: string; url: string }): string {
-  return `${input.title} — ${input.priceLabel}\nfrom ${input.shopName} on ansa\n${input.url}`;
+export function defaultCaption(input: { title: string; priceLabel: string; merchantName: string; url: string }): string {
+  return `${input.title} — ${input.priceLabel}\nfrom ${input.merchantName} on ansa\n${input.url}`;
 }

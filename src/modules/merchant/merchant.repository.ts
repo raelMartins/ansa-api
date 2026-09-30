@@ -1,6 +1,6 @@
 import type { Queryable } from "../../db/pool.js";
 
-export type ShopRow = {
+export type MerchantRow = {
   id: string;
   owner_user_id: string;
   name: string;
@@ -25,7 +25,7 @@ export type CatalogKind = "product" | "service";
 
 export type ProductRow = {
   id: string;
-  shop_id: string;
+  merchant_id: string;
   title: string;
   description: string | null;
   price_kobo: number;
@@ -45,13 +45,13 @@ export type ProductRow = {
   updated_at: Date;
 };
 
-export const SHOP_COLS = `id, owner_user_id, name, slug, description, category, phone, whatsapp, location,
+export const MERCHANT_COLS = `id, owner_user_id, name, slug, description, category, phone, whatsapp, location,
   logo_url, cover_url, instagram_handle, tiktok_handle, x_handle, onboarding_completed_at, created_at, updated_at`;
 
-export const PRODUCT_COLS = `id, shop_id, title, description, price_kobo, currency, status, slug, image_urls,
+export const PRODUCT_COLS = `id, merchant_id, title, description, price_kobo, currency, status, slug, image_urls,
   kind, compare_at_kobo, qty_available, qty_sold, sku, category, duration_minutes, availability_note, created_at, updated_at`;
 
-export type ShopProfileInput = {
+export type MerchantProfileInput = {
   ownerUserId: string;
   name: string;
   slug: string;
@@ -68,14 +68,14 @@ export type ShopProfileInput = {
   onboardingCompleted?: boolean;
 };
 
-export async function insertShop(db: Queryable, input: ShopProfileInput): Promise<ShopRow> {
-  const { rows } = await db.query<ShopRow>(
-    `INSERT INTO shops (
+export async function insertMerchant(db: Queryable, input: MerchantProfileInput): Promise<MerchantRow> {
+  const { rows } = await db.query<MerchantRow>(
+    `INSERT INTO merchants (
        owner_user_id, name, slug, description, category, phone, whatsapp, location,
        logo_url, cover_url, instagram_handle, tiktok_handle, x_handle, onboarding_completed_at
      )
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, CASE WHEN $14 THEN now() ELSE NULL END)
-     RETURNING ${SHOP_COLS}`,
+     RETURNING ${MERCHANT_COLS}`,
     [
       input.ownerUserId,
       input.name,
@@ -94,26 +94,41 @@ export async function insertShop(db: Queryable, input: ShopProfileInput): Promis
     ],
   );
   const row = rows[0];
-  if (!row) throw new Error("insertShop returned no row");
+  if (!row) throw new Error("insertMerchant returned no row");
   return row;
 }
 
-export async function findShopByOwner(db: Queryable, ownerUserId: string): Promise<ShopRow | undefined> {
-  const { rows } = await db.query<ShopRow>(`SELECT ${SHOP_COLS} FROM shops WHERE owner_user_id = $1`, [ownerUserId]);
+export async function listMerchantsByOwner(db: Queryable, ownerUserId: string): Promise<MerchantRow[]> {
+  const { rows } = await db.query<MerchantRow>(
+    `SELECT ${MERCHANT_COLS} FROM merchants WHERE owner_user_id = $1 ORDER BY created_at ASC`,
+    [ownerUserId],
+  );
+  return rows;
+}
+
+export async function findMerchantByOwnerAndId(
+  db: Queryable,
+  ownerUserId: string,
+  merchantId: string,
+): Promise<MerchantRow | undefined> {
+  const { rows } = await db.query<MerchantRow>(
+    `SELECT ${MERCHANT_COLS} FROM merchants WHERE owner_user_id = $1 AND id = $2`,
+    [ownerUserId, merchantId],
+  );
   return rows[0];
 }
 
-export async function findShopBySlug(db: Queryable, slug: string): Promise<ShopRow | undefined> {
-  const { rows } = await db.query<ShopRow>(`SELECT ${SHOP_COLS} FROM shops WHERE slug = $1`, [slug]);
+export async function findMerchantBySlug(db: Queryable, slug: string): Promise<MerchantRow | undefined> {
+  const { rows } = await db.query<MerchantRow>(`SELECT ${MERCHANT_COLS} FROM merchants WHERE slug = $1`, [slug]);
   return rows[0];
 }
 
-export async function findShopById(db: Queryable, id: string): Promise<ShopRow | undefined> {
-  const { rows } = await db.query<ShopRow>(`SELECT ${SHOP_COLS} FROM shops WHERE id = $1`, [id]);
+export async function findMerchantById(db: Queryable, id: string): Promise<MerchantRow | undefined> {
+  const { rows } = await db.query<MerchantRow>(`SELECT ${MERCHANT_COLS} FROM merchants WHERE id = $1`, [id]);
   return rows[0];
 }
 
-export type ShopPatch = {
+export type MerchantPatch = {
   name?: string;
   slug?: string;
   description?: string | null;
@@ -129,9 +144,9 @@ export type ShopPatch = {
   onboardingCompleted?: boolean;
 };
 
-export async function updateShopRow(db: Queryable, id: string, patch: ShopPatch): Promise<ShopRow> {
-  const { rows } = await db.query<ShopRow>(
-    `UPDATE shops
+export async function updateMerchantRow(db: Queryable, id: string, patch: MerchantPatch): Promise<MerchantRow> {
+  const { rows } = await db.query<MerchantRow>(
+    `UPDATE merchants
      SET name = COALESCE($2, name),
          slug = COALESCE($3, slug),
          description = CASE WHEN $4::boolean THEN $5 ELSE description END,
@@ -147,7 +162,7 @@ export async function updateShopRow(db: Queryable, id: string, patch: ShopPatch)
          onboarding_completed_at = CASE WHEN $24::boolean THEN now() ELSE onboarding_completed_at END,
          updated_at = now()
      WHERE id = $1
-     RETURNING ${SHOP_COLS}`,
+     RETURNING ${MERCHANT_COLS}`,
     [
       id,
       patch.name ?? null,
@@ -176,12 +191,12 @@ export async function updateShopRow(db: Queryable, id: string, patch: ShopPatch)
     ],
   );
   const row = rows[0];
-  if (!row) throw new Error("updateShopRow returned no row");
+  if (!row) throw new Error("updateMerchantRow returned no row");
   return row;
 }
 
 export type InsertProductInput = {
-  shopId: string;
+  merchantId: string;
   title: string;
   description: string | null;
   priceKobo: number;
@@ -200,13 +215,13 @@ export type InsertProductInput = {
 export async function insertProduct(db: Queryable, input: InsertProductInput): Promise<ProductRow> {
   const { rows } = await db.query<ProductRow>(
     `INSERT INTO products (
-       shop_id, title, description, price_kobo, status, slug, image_urls, kind,
+       merchant_id, title, description, price_kobo, status, slug, image_urls, kind,
        compare_at_kobo, qty_available, sku, category, duration_minutes, availability_note
      )
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING ${PRODUCT_COLS}`,
     [
-      input.shopId,
+      input.merchantId,
       input.title,
       input.description,
       input.priceKobo,
@@ -227,21 +242,21 @@ export async function insertProduct(db: Queryable, input: InsertProductInput): P
   return row;
 }
 
-export async function listProductsByShop(db: Queryable, shopId: string): Promise<ProductRow[]> {
+export async function listProductsByMerchant(db: Queryable, merchantId: string): Promise<ProductRow[]> {
   const { rows } = await db.query<ProductRow>(
-    `SELECT ${PRODUCT_COLS} FROM products WHERE shop_id = $1 ORDER BY created_at DESC`,
-    [shopId],
+    `SELECT ${PRODUCT_COLS} FROM products WHERE merchant_id = $1 ORDER BY created_at DESC`,
+    [merchantId],
   );
   return rows;
 }
 
-export async function listPublishedProductsByShop(db: Queryable, shopId: string): Promise<ProductRow[]> {
+export async function listPublishedProductsByMerchant(db: Queryable, merchantId: string): Promise<ProductRow[]> {
   const { rows } = await db.query<ProductRow>(
     `SELECT ${PRODUCT_COLS}
      FROM products
-     WHERE shop_id = $1 AND status = 'published'
+     WHERE merchant_id = $1 AND status = 'published'
      ORDER BY created_at DESC`,
-    [shopId],
+    [merchantId],
   );
   return rows;
 }
@@ -251,14 +266,14 @@ export async function findProductById(db: Queryable, id: string): Promise<Produc
   return rows[0];
 }
 
-export async function findProductByShopAndSlug(
+export async function findProductByMerchantAndSlug(
   db: Queryable,
-  shopId: string,
+  merchantId: string,
   slug: string,
 ): Promise<ProductRow | undefined> {
   const { rows } = await db.query<ProductRow>(
-    `SELECT ${PRODUCT_COLS} FROM products WHERE shop_id = $1 AND slug = $2`,
-    [shopId, slug],
+    `SELECT ${PRODUCT_COLS} FROM products WHERE merchant_id = $1 AND slug = $2`,
+    [merchantId, slug],
   );
   return rows[0];
 }
@@ -357,7 +372,7 @@ export type IntegrationStatus = "not_connected" | "connecting" | "connected" | "
 
 export type IntegrationRow = {
   id: string;
-  shop_id: string;
+  merchant_id: string;
   channel: IntegrationChannel;
   status: IntegrationStatus;
   provider: string;
@@ -368,11 +383,11 @@ export type IntegrationRow = {
   updated_at: Date;
 };
 
-export async function listIntegrations(db: Queryable, shopId: string): Promise<IntegrationRow[]> {
+export async function listIntegrations(db: Queryable, merchantId: string): Promise<IntegrationRow[]> {
   const { rows } = await db.query<IntegrationRow>(
-    `SELECT id, shop_id, channel, status, provider, external_account, last_error, connected_at, metadata, updated_at
-     FROM shop_integrations WHERE shop_id = $1`,
-    [shopId],
+    `SELECT id, merchant_id, channel, status, provider, external_account, last_error, connected_at, metadata, updated_at
+     FROM merchant_integrations WHERE merchant_id = $1`,
+    [merchantId],
   );
   return rows;
 }
@@ -380,7 +395,7 @@ export async function listIntegrations(db: Queryable, shopId: string): Promise<I
 export async function upsertIntegration(
   db: Queryable,
   input: {
-    shopId: string;
+    merchantId: string;
     channel: IntegrationChannel;
     status: IntegrationStatus;
     provider: string;
@@ -390,18 +405,18 @@ export async function upsertIntegration(
   },
 ): Promise<IntegrationRow> {
   const { rows } = await db.query<IntegrationRow>(
-    `INSERT INTO shop_integrations (shop_id, channel, status, provider, external_account, last_error, connected_at)
+    `INSERT INTO merchant_integrations (merchant_id, channel, status, provider, external_account, last_error, connected_at)
      VALUES ($1,$2,$3,$4,$5,$6, CASE WHEN $7 THEN now() ELSE NULL END)
-     ON CONFLICT (shop_id, channel) DO UPDATE SET
+     ON CONFLICT (merchant_id, channel) DO UPDATE SET
        status = EXCLUDED.status,
        provider = EXCLUDED.provider,
        external_account = EXCLUDED.external_account,
        last_error = EXCLUDED.last_error,
        connected_at = CASE WHEN $7 THEN now() ELSE NULL END,
        updated_at = now()
-     RETURNING id, shop_id, channel, status, provider, external_account, last_error, connected_at, metadata, updated_at`,
+     RETURNING id, merchant_id, channel, status, provider, external_account, last_error, connected_at, metadata, updated_at`,
     [
-      input.shopId,
+      input.merchantId,
       input.channel,
       input.status,
       input.provider,
@@ -416,7 +431,7 @@ export async function upsertIntegration(
 }
 
 export type WhatsAppSettingsRow = {
-  shop_id: string;
+  merchant_id: string;
   share_catalog: boolean;
   notify_merchant: boolean;
   notify_customer: boolean;
@@ -425,18 +440,18 @@ export type WhatsAppSettingsRow = {
   updated_at: Date;
 };
 
-export async function getWhatsAppSettings(db: Queryable, shopId: string): Promise<WhatsAppSettingsRow | undefined> {
+export async function getWhatsAppSettings(db: Queryable, merchantId: string): Promise<WhatsAppSettingsRow | undefined> {
   const { rows } = await db.query<WhatsAppSettingsRow>(
-    `SELECT shop_id, share_catalog, notify_merchant, notify_customer, contact_number, templates, updated_at
-     FROM shop_whatsapp_settings WHERE shop_id = $1`,
-    [shopId],
+    `SELECT merchant_id, share_catalog, notify_merchant, notify_customer, contact_number, templates, updated_at
+     FROM merchant_whatsapp_settings WHERE merchant_id = $1`,
+    [merchantId],
   );
   return rows[0];
 }
 
 export async function upsertWhatsAppSettings(
   db: Queryable,
-  shopId: string,
+  merchantId: string,
   patch: Partial<{
     shareCatalog: boolean;
     notifyMerchant: boolean;
@@ -445,24 +460,24 @@ export async function upsertWhatsAppSettings(
     templates: Record<string, string>;
   }>,
 ): Promise<WhatsAppSettingsRow> {
-  const existing = await getWhatsAppSettings(db, shopId);
+  const existing = await getWhatsAppSettings(db, merchantId);
   const share = patch.shareCatalog ?? existing?.share_catalog ?? true;
   const merchant = patch.notifyMerchant ?? existing?.notify_merchant ?? true;
   const customer = patch.notifyCustomer ?? existing?.notify_customer ?? true;
   const contact = patch.contactNumber !== undefined ? patch.contactNumber : (existing?.contact_number ?? null);
   const templates = patch.templates ?? existing?.templates ?? {};
   const { rows } = await db.query<WhatsAppSettingsRow>(
-    `INSERT INTO shop_whatsapp_settings (shop_id, share_catalog, notify_merchant, notify_customer, contact_number, templates)
+    `INSERT INTO merchant_whatsapp_settings (merchant_id, share_catalog, notify_merchant, notify_customer, contact_number, templates)
      VALUES ($1,$2,$3,$4,$5,$6::jsonb)
-     ON CONFLICT (shop_id) DO UPDATE SET
+     ON CONFLICT (merchant_id) DO UPDATE SET
        share_catalog = EXCLUDED.share_catalog,
        notify_merchant = EXCLUDED.notify_merchant,
        notify_customer = EXCLUDED.notify_customer,
        contact_number = EXCLUDED.contact_number,
        templates = EXCLUDED.templates,
        updated_at = now()
-     RETURNING shop_id, share_catalog, notify_merchant, notify_customer, contact_number, templates, updated_at`,
-    [shopId, share, merchant, customer, contact, JSON.stringify(templates)],
+     RETURNING merchant_id, share_catalog, notify_merchant, notify_customer, contact_number, templates, updated_at`,
+    [merchantId, share, merchant, customer, contact, JSON.stringify(templates)],
   );
   const row = rows[0];
   if (!row) throw new Error("upsertWhatsAppSettings returned no row");
@@ -471,7 +486,7 @@ export async function upsertWhatsAppSettings(
 
 export type PublicationRow = {
   id: string;
-  shop_id: string;
+  merchant_id: string;
   product_id: string;
   channel: string;
   caption: string;
@@ -484,7 +499,7 @@ export type PublicationRow = {
 export async function insertPublication(
   db: Queryable,
   input: {
-    shopId: string;
+    merchantId: string;
     productId: string;
     channel: string;
     caption: string;
@@ -494,10 +509,10 @@ export async function insertPublication(
   },
 ): Promise<PublicationRow> {
   const { rows } = await db.query<PublicationRow>(
-    `INSERT INTO catalog_publications (shop_id, product_id, channel, caption, status, provider, detail)
+    `INSERT INTO catalog_publications (merchant_id, product_id, channel, caption, status, provider, detail)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
-     RETURNING id, shop_id, product_id, channel, caption, status, provider, detail, created_at`,
-    [input.shopId, input.productId, input.channel, input.caption, input.status, input.provider, input.detail],
+     RETURNING id, merchant_id, product_id, channel, caption, status, provider, detail, created_at`,
+    [input.merchantId, input.productId, input.channel, input.caption, input.status, input.provider, input.detail],
   );
   const row = rows[0];
   if (!row) throw new Error("insertPublication returned no row");
@@ -509,7 +524,7 @@ export async function listPublicationsForProduct(
   productId: string,
 ): Promise<PublicationRow[]> {
   const { rows } = await db.query<PublicationRow>(
-    `SELECT id, shop_id, product_id, channel, caption, status, provider, detail, created_at
+    `SELECT id, merchant_id, product_id, channel, caption, status, provider, detail, created_at
      FROM catalog_publications WHERE product_id = $1 ORDER BY created_at DESC LIMIT 40`,
     [productId],
   );
@@ -518,7 +533,7 @@ export async function listPublicationsForProduct(
 
 export type NotificationEventRow = {
   id: string;
-  shop_id: string;
+  merchant_id: string;
   order_id: string | null;
   channel: string;
   template_key: string;
@@ -532,7 +547,7 @@ export type NotificationEventRow = {
 export async function insertNotificationEvent(
   db: Queryable,
   input: {
-    shopId: string;
+    merchantId: string;
     orderId?: string | null;
     channel: string;
     templateKey: string;
@@ -543,11 +558,11 @@ export async function insertNotificationEvent(
   },
 ): Promise<NotificationEventRow> {
   const { rows } = await db.query<NotificationEventRow>(
-    `INSERT INTO notification_events (shop_id, order_id, channel, template_key, status, provider, body, recipient)
+    `INSERT INTO notification_events (merchant_id, order_id, channel, template_key, status, provider, body, recipient)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-     RETURNING id, shop_id, order_id, channel, template_key, status, provider, body, recipient, created_at`,
+     RETURNING id, merchant_id, order_id, channel, template_key, status, provider, body, recipient, created_at`,
     [
-      input.shopId,
+      input.merchantId,
       input.orderId ?? null,
       input.channel,
       input.templateKey,
@@ -562,11 +577,11 @@ export async function insertNotificationEvent(
   return row;
 }
 
-export async function listNotificationEvents(db: Queryable, shopId: string, limit = 40): Promise<NotificationEventRow[]> {
+export async function listNotificationEvents(db: Queryable, merchantId: string, limit = 40): Promise<NotificationEventRow[]> {
   const { rows } = await db.query<NotificationEventRow>(
-    `SELECT id, shop_id, order_id, channel, template_key, status, provider, body, recipient, created_at
-     FROM notification_events WHERE shop_id = $1 ORDER BY created_at DESC LIMIT $2`,
-    [shopId, limit],
+    `SELECT id, merchant_id, order_id, channel, template_key, status, provider, body, recipient, created_at
+     FROM notification_events WHERE merchant_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [merchantId, limit],
   );
   return rows;
 }

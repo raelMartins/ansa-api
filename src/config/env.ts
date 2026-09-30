@@ -13,8 +13,12 @@ const schema = z.object({
   JWT_REFRESH_TTL: ttl.default("30d"),
   CORS_ORIGINS: z.string().default("http://localhost:5173,http://localhost:3000"),
   PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
-  PAYMENT_PROVIDER: z.enum(["mock", "paystack"]).default("mock"),
-  PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
+  PAYMENT_PROVIDER: z.enum(["mock", "flutterwave"]).default("mock"),
+  FLUTTERWAVE_SECRET_KEY: z.string().min(1).optional(),
+  MEDIA_PROVIDER: z.enum(["local_disk", "cloudinary"]).default("local_disk"),
+  CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
+  CLOUDINARY_API_KEY: z.string().min(1).optional(),
+  CLOUDINARY_API_SECRET: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof schema> & {

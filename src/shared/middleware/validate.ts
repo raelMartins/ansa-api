@@ -11,7 +11,11 @@ export function validate<T>(schema: ZodType<T>, part: Part = "body") {
       next(fromZod(result.error));
       return;
     }
-    req[part] = result.data as typeof req.body;
+    if (part === "params") {
+      Object.assign(req.params, result.data);
+    } else {
+      req[part] = result.data as typeof req.body;
+    }
     next();
   };
 }

@@ -6,7 +6,7 @@ import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
 import { mountHttp } from "./modules/http.js";
-import { getUploadsDir } from "./modules/shop/shop.service.js";
+import { getUploadsDir } from "./modules/merchant/merchant.service.js";
 import { logger } from "./shared/logger.js";
 import { errorHandler, notFoundHandler } from "./shared/middleware/error-handler.js";
 import { requestId } from "./shared/middleware/request-id.js";

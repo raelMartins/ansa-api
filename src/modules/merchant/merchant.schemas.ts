@@ -18,7 +18,7 @@ const mediaRef = z
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 
-export const createShopSchema = z.object({
+export const createMerchantSchema = z.object({
   name: z.string().trim().min(1).max(120),
   slug: slug.optional(),
   description: z.string().trim().max(2000).optional(),
@@ -34,7 +34,7 @@ export const createShopSchema = z.object({
   onboardingCompleted: z.boolean().optional(),
 });
 
-export const updateShopSchema = createShopSchema
+export const updateMerchantSchema = createMerchantSchema
   .partial()
   .refine((v) => Object.values(v).some((x) => x !== undefined), {
     message: "Provide at least one field to update",
@@ -70,12 +70,12 @@ export const productIdParamSchema = z.object({
 });
 
 export const publicProductParamsSchema = z.object({
-  shopSlug: slug,
+  merchantSlug: slug,
   productSlug: slug,
 });
 
 export const publicShopParamsSchema = z.object({
-  shopSlug: slug,
+  merchantSlug: slug,
 });
 
 export const channelParamSchema = z.object({

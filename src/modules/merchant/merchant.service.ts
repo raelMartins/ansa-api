@@ -11,33 +11,36 @@ import { renderTemplate, resolveWhatsAppProvider } from "../notifications/index.
 import {
   archiveProductRow,
   findProductById,
-  findProductByShopAndSlug,
-  findShopByOwner,
-  findShopById,
-  findShopBySlug,
+  findProductByMerchantAndSlug,
+  listMerchantsByOwner,
+  findMerchantByOwnerAndId,
+  findMerchantById,
+  findMerchantBySlug,
   getWhatsAppSettings,
   insertNotificationEvent,
   insertProduct,
   insertPublication,
-  insertShop,
+  insertMerchant,
   listIntegrations,
   listNotificationEvents,
-  listProductsByShop,
+  listProductsByMerchant,
   listPublicationsForProduct,
-  listPublishedProductsByShop,
+  listPublishedProductsByMerchant,
   updateProductRow,
-  updateShopRow,
+  updateMerchantRow,
   upsertIntegration,
   upsertWhatsAppSettings,
   type CatalogKind,
   type IntegrationChannel,
   type ProductRow,
   type ProductStatus,
-  type ShopRow,
-} from "./shop.repository.js";
+  type MerchantRow,
+} from "./merchant.repository.js";
+import { DomainEventName, recordDomainEvent } from "../analytics/events.js";
+import { resolveMediaProvider } from "../media/provider.js";
 import { slugify, withSuffix } from "./slug.js";
 
-export type PublicShop = {
+export type PublicMerchant = {
   id: string;
   name: string;
   slug: string;
@@ -57,7 +60,7 @@ export type PublicShop = {
 
 export type PublicProduct = {
   id: string;
-  shopId: string;
+  merchantId: string;
   title: string;
   description: string | null;
   priceKobo: number;
@@ -77,7 +80,7 @@ export type PublicProduct = {
   updatedAt: string;
 };
 
-export function toPublicShop(row: ShopRow): PublicShop {
+export function toPublicMerchant(row: MerchantRow): PublicMerchant {
   return {
     id: row.id,
     name: row.name,
@@ -100,7 +103,7 @@ export function toPublicShop(row: ShopRow): PublicShop {
 export function toPublicProduct(row: ProductRow): PublicProduct {
   return {
     id: row.id,
-    shopId: row.shop_id,
+    merchantId: row.merchant_id,
     title: row.title,
     description: row.description,
     priceKobo: row.price_kobo,
@@ -125,29 +128,29 @@ function uniqueSuffix(): string {
   return randomBytes(3).toString("hex");
 }
 
-async function uniqueShopSlug(preferred: string): Promise<string> {
+async function uniqueMerchantSlug(preferred: string): Promise<string> {
   const db = getPool();
   let candidate = preferred;
   for (let i = 0; i < 8; i += 1) {
-    const existing = await findShopBySlug(db, candidate);
+    const existing = await findMerchantBySlug(db, candidate);
     if (!existing) return candidate;
     candidate = withSuffix(preferred, uniqueSuffix());
   }
   throw conflict("Could not allocate a unique shop slug");
 }
 
-async function uniqueProductSlug(shopId: string, preferred: string): Promise<string> {
+async function uniqueProductSlug(merchantId: string, preferred: string): Promise<string> {
   const db = getPool();
   let candidate = preferred;
   for (let i = 0; i < 8; i += 1) {
-    const existing = await findProductByShopAndSlug(db, shopId, candidate);
+    const existing = await findProductByMerchantAndSlug(db, merchantId, candidate);
     if (!existing) return candidate;
     candidate = withSuffix(preferred, uniqueSuffix());
   }
   throw conflict("Could not allocate a unique product slug");
 }
 
-export type CreateShopInput = {
+export type CreateMerchantInput = {
   name: string;
   slug?: string;
   description?: string;
@@ -163,15 +166,12 @@ export type CreateShopInput = {
   onboardingCompleted?: boolean;
 };
 
-export async function createShop(ownerUserId: string, input: CreateShopInput): Promise<PublicShop> {
+export async function createMerchant(ownerUserId: string, input: CreateMerchantInput): Promise<PublicMerchant> {
   const db = getPool();
-  if (await findShopByOwner(db, ownerUserId)) {
-    throw conflict("This account already has a shop");
-  }
   const base = input.slug ?? slugify(input.name);
-  const slug = await uniqueShopSlug(base);
+  const slug = await uniqueMerchantSlug(base);
   try {
-    const row = await insertShop(db, {
+    const row = await insertMerchant(db, {
       ownerUserId,
       name: input.name,
       slug,
@@ -189,10 +189,16 @@ export async function createShop(ownerUserId: string, input: CreateShopInput): P
     });
     await ensureDefaultIntegrations(row.id);
     await upsertWhatsAppSettings(db, row.id, { contactNumber: input.whatsapp ?? input.phone ?? null });
-    return toPublicShop(row);
+    await recordDomainEvent({
+      eventName: DomainEventName.merchantCreated,
+      userId: ownerUserId,
+      merchantId: row.id,
+      properties: { slug: row.slug },
+    });
+    return toPublicMerchant(row);
   } catch (err) {
     if (isUniqueViolation(err)) {
-      throw conflict("Shop slug is already taken");
+      throw conflict("Merchant slug is already taken");
     }
     throw err;
   }
@@ -200,14 +206,14 @@ export async function createShop(ownerUserId: string, input: CreateShopInput): P
 
 const CHANNELS: IntegrationChannel[] = ["whatsapp", "instagram", "tiktok", "x"];
 
-async function ensureDefaultIntegrations(shopId: string): Promise<void> {
+async function ensureDefaultIntegrations(merchantId: string): Promise<void> {
   const db = getPool();
-  const existing = await listIntegrations(db, shopId);
+  const existing = await listIntegrations(db, merchantId);
   const have = new Set(existing.map((r) => r.channel));
   for (const channel of CHANNELS) {
     if (have.has(channel)) continue;
     await upsertIntegration(db, {
-      shopId,
+      merchantId,
       channel,
       status: "not_connected",
       provider: "mock",
@@ -215,18 +221,22 @@ async function ensureDefaultIntegrations(shopId: string): Promise<void> {
   }
 }
 
-export async function getMyShop(ownerUserId: string): Promise<PublicShop> {
-  const row = await findShopByOwner(getPool(), ownerUserId);
-  if (!row) throw notFound("Shop not found");
-  await ensureDefaultIntegrations(row.id);
-  return toPublicShop(row);
+export async function listMerchantsForOwner(ownerUserId: string): Promise<PublicMerchant[]> {
+  const rows = await listMerchantsByOwner(getPool(), ownerUserId);
+  for (const row of rows) await ensureDefaultIntegrations(row.id);
+  return rows.map(toPublicMerchant);
 }
 
-export async function updateMyShop(ownerUserId: string, patch: CreateShopInput): Promise<PublicShop> {
-  const existing = await findShopByOwner(getPool(), ownerUserId);
-  if (!existing) throw notFound("Shop not found");
+export async function getMerchant(ownerUserId: string, merchantId: string): Promise<PublicMerchant> {
+  const row = await requireOwnedMerchant(ownerUserId, merchantId);
+  await ensureDefaultIntegrations(row.id);
+  return toPublicMerchant(row);
+}
+
+export async function updateMerchant(ownerUserId: string, merchantId: string, patch: CreateMerchantInput): Promise<PublicMerchant> {
+  await requireOwnedMerchant(ownerUserId, merchantId);
   try {
-    const row = await updateShopRow(getPool(), existing.id, {
+    const row = await updateMerchantRow(getPool(), merchantId, {
       name: patch.name,
       slug: patch.slug,
       description: patch.description,
@@ -241,25 +251,25 @@ export async function updateMyShop(ownerUserId: string, patch: CreateShopInput):
       xHandle: patch.xHandle,
       onboardingCompleted: patch.onboardingCompleted,
     });
-    return toPublicShop(row);
+    return toPublicMerchant(row);
   } catch (err) {
     if (isUniqueViolation(err)) {
-      throw conflict("Shop slug is already taken");
+      throw conflict("Merchant slug is already taken");
     }
     throw err;
   }
 }
 
-export async function requireOwnedShop(ownerUserId: string): Promise<ShopRow> {
-  const shop = await findShopByOwner(getPool(), ownerUserId);
-  if (!shop) throw notFound("Shop not found");
-  return shop;
+export async function requireOwnedMerchant(ownerUserId: string, merchantId: string): Promise<MerchantRow> {
+  const row = await findMerchantByOwnerAndId(getPool(), ownerUserId, merchantId);
+  if (!row) throw notFound("Merchant not found");
+  return row;
 }
 
-async function requireOwnedProduct(ownerUserId: string, productId: string): Promise<ProductRow> {
-  const shop = await requireOwnedShop(ownerUserId);
+async function requireOwnedProduct(ownerUserId: string, merchantId: string, productId: string): Promise<ProductRow> {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   const product = await findProductById(getPool(), productId);
-  if (!product || product.shop_id !== shop.id) {
+  if (!product || product.merchant_id !== shop.id) {
     throw notFound("Product not found");
   }
   return product;
@@ -281,12 +291,12 @@ export type CreateProductInput = {
   availabilityNote?: string | null;
 };
 
-export async function createProduct(ownerUserId: string, input: CreateProductInput): Promise<PublicProduct> {
-  const shop = await requireOwnedShop(ownerUserId);
+export async function createProduct(ownerUserId: string, merchantId: string, input: CreateProductInput): Promise<PublicProduct> {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   const slug = await uniqueProductSlug(shop.id, input.slug ?? slugify(input.title));
   try {
     const row = await insertProduct(getPool(), {
-      shopId: shop.id,
+      merchantId: shop.id,
       title: input.title,
       description: input.description ?? null,
       priceKobo: input.priceKobo,
@@ -304,61 +314,62 @@ export async function createProduct(ownerUserId: string, input: CreateProductInp
     return toPublicProduct(row);
   } catch (err) {
     if (isUniqueViolation(err)) {
-      throw conflict("A product with this slug already exists in the shop");
+      throw conflict("A product with this slug already exists for this merchant");
     }
     throw err;
   }
 }
 
-export async function listMyProducts(ownerUserId: string): Promise<PublicProduct[]> {
-  const shop = await requireOwnedShop(ownerUserId);
-  const rows = await listProductsByShop(getPool(), shop.id);
+export async function listMyProducts(ownerUserId: string, merchantId: string): Promise<PublicProduct[]> {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
+  const rows = await listProductsByMerchant(getPool(), shop.id);
   return rows.map(toPublicProduct);
 }
 
-export async function getMyProduct(ownerUserId: string, productId: string): Promise<PublicProduct> {
-  return toPublicProduct(await requireOwnedProduct(ownerUserId, productId));
+export async function getMyProduct(ownerUserId: string, merchantId: string, productId: string): Promise<PublicProduct> {
+  return toPublicProduct(await requireOwnedProduct(ownerUserId, merchantId, productId));
 }
 
 export async function updateMyProduct(
   ownerUserId: string,
+  merchantId: string,
   productId: string,
   patch: Partial<CreateProductInput> & { status?: ProductStatus },
 ): Promise<PublicProduct> {
-  await requireOwnedProduct(ownerUserId, productId);
+  await requireOwnedProduct(ownerUserId, merchantId, productId);
   try {
     const row = await updateProductRow(getPool(), productId, patch);
     return toPublicProduct(row);
   } catch (err) {
     if (isUniqueViolation(err)) {
-      throw conflict("A product with this slug already exists in the shop");
+      throw conflict("A product with this slug already exists for this merchant");
     }
     throw err;
   }
 }
 
-export async function archiveMyProduct(ownerUserId: string, productId: string): Promise<PublicProduct> {
-  await requireOwnedProduct(ownerUserId, productId);
+export async function archiveMyProduct(ownerUserId: string, merchantId: string, productId: string): Promise<PublicProduct> {
+  await requireOwnedProduct(ownerUserId, merchantId, productId);
   return toPublicProduct(await archiveProductRow(getPool(), productId));
 }
 
-export async function getPublicShop(shopSlug: string): Promise<PublicShop> {
-  const shop = await findShopBySlug(getPool(), shopSlug);
-  if (!shop) throw notFound("Shop not found");
-  return toPublicShop(shop);
+export async function getPublicMerchant(merchantSlug: string): Promise<PublicMerchant> {
+  const shop = await findMerchantBySlug(getPool(), merchantSlug);
+  if (!shop) throw notFound("Merchant not found");
+  return toPublicMerchant(shop);
 }
 
-export async function listPublicProducts(shopSlug: string): Promise<PublicProduct[]> {
-  const shop = await findShopBySlug(getPool(), shopSlug);
-  if (!shop) throw notFound("Shop not found");
-  const rows = await listPublishedProductsByShop(getPool(), shop.id);
+export async function listPublicProducts(merchantSlug: string): Promise<PublicProduct[]> {
+  const shop = await findMerchantBySlug(getPool(), merchantSlug);
+  if (!shop) throw notFound("Merchant not found");
+  const rows = await listPublishedProductsByMerchant(getPool(), shop.id);
   return rows.map(toPublicProduct);
 }
 
-export async function getPublicProduct(shopSlug: string, productSlug: string): Promise<PublicProduct> {
-  const shop = await findShopBySlug(getPool(), shopSlug);
+export async function getPublicProduct(merchantSlug: string, productSlug: string): Promise<PublicProduct> {
+  const shop = await findMerchantBySlug(getPool(), merchantSlug);
   if (!shop) throw notFound("Product not found");
-  const product = await findProductByShopAndSlug(getPool(), shop.id, productSlug);
+  const product = await findProductByMerchantAndSlug(getPool(), shop.id, productSlug);
   if (!product || product.status !== "published") {
     throw notFound("Product not found");
   }
@@ -386,8 +397,8 @@ export function toPublicIntegration(row: {
   };
 }
 
-export async function listMyIntegrations(ownerUserId: string) {
-  const shop = await requireOwnedShop(ownerUserId);
+export async function listMyIntegrations(ownerUserId: string, merchantId: string) {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   await ensureDefaultIntegrations(shop.id);
   const rows = await listIntegrations(getPool(), shop.id);
   return rows.map(toPublicIntegration);
@@ -395,12 +406,13 @@ export async function listMyIntegrations(ownerUserId: string) {
 
 export async function simulateConnect(
   ownerUserId: string,
+  merchantId: string,
   channel: IntegrationChannel,
   account?: string,
 ): Promise<ReturnType<typeof toPublicIntegration>> {
-  const shop = await requireOwnedShop(ownerUserId);
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   await upsertIntegration(getPool(), {
-    shopId: shop.id,
+    merchantId: shop.id,
     channel,
     status: "connecting",
     provider: "mock",
@@ -411,7 +423,7 @@ export async function simulateConnect(
       ? (shop.whatsapp ?? shop.phone ?? "+2348000000000")
       : `@${shop.slug}`);
   const row = await upsertIntegration(getPool(), {
-    shopId: shop.id,
+    merchantId: shop.id,
     channel,
     status: "connected",
     provider: "mock",
@@ -421,10 +433,10 @@ export async function simulateConnect(
   return toPublicIntegration(row);
 }
 
-export async function disconnectChannel(ownerUserId: string, channel: IntegrationChannel) {
-  const shop = await requireOwnedShop(ownerUserId);
+export async function disconnectChannel(ownerUserId: string, merchantId: string, channel: IntegrationChannel) {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   const row = await upsertIntegration(getPool(), {
-    shopId: shop.id,
+    merchantId: shop.id,
     channel,
     status: "not_connected",
     provider: "mock",
@@ -434,8 +446,8 @@ export async function disconnectChannel(ownerUserId: string, channel: Integratio
   return toPublicIntegration(row);
 }
 
-export async function getMyWhatsApp(ownerUserId: string) {
-  const shop = await requireOwnedShop(ownerUserId);
+export async function getMyWhatsApp(ownerUserId: string, merchantId: string) {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   await ensureDefaultIntegrations(shop.id);
   const settings = await upsertWhatsAppSettings(getPool(), shop.id, {
     contactNumber: (await getWhatsAppSettings(getPool(), shop.id))?.contact_number ?? shop.whatsapp ?? shop.phone,
@@ -456,6 +468,7 @@ export async function getMyWhatsApp(ownerUserId: string) {
 
 export async function updateMyWhatsApp(
   ownerUserId: string,
+  merchantId: string,
   patch: {
     shareCatalog?: boolean;
     notifyMerchant?: boolean;
@@ -464,9 +477,9 @@ export async function updateMyWhatsApp(
     templates?: Record<string, string>;
   },
 ) {
-  const shop = await requireOwnedShop(ownerUserId);
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   await upsertWhatsAppSettings(getPool(), shop.id, patch);
-  return getMyWhatsApp(ownerUserId);
+  return getMyWhatsApp(ownerUserId, merchantId);
 }
 
 function formatNairaLabel(kobo: number): string {
@@ -475,11 +488,12 @@ function formatNairaLabel(kobo: number): string {
 
 export async function shareItem(
   ownerUserId: string,
+  merchantId: string,
   productId: string,
   input: { channel: IntegrationChannel; caption?: string },
 ) {
-  const shop = await requireOwnedShop(ownerUserId);
-  const product = await requireOwnedProduct(ownerUserId, productId);
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
+  const product = await requireOwnedProduct(ownerUserId, merchantId, productId);
   await ensureDefaultIntegrations(shop.id);
   const integrations = await listIntegrations(getPool(), shop.id);
   const conn = integrations.find((i) => i.channel === input.channel);
@@ -492,7 +506,7 @@ export async function shareItem(
     defaultCaption({
       title: product.title,
       priceLabel: formatNairaLabel(product.price_kobo),
-      shopName: shop.name,
+      merchantName: shop.name,
       url: itemUrl,
     });
 
@@ -512,7 +526,7 @@ export async function shareItem(
         });
 
   const pub = await insertPublication(getPool(), {
-    shopId: shop.id,
+    merchantId: shop.id,
     productId: product.id,
     channel: input.channel,
     caption,
@@ -535,9 +549,9 @@ export async function shareItem(
   };
 }
 
-export async function getItemShare(ownerUserId: string, productId: string) {
-  const shop = await requireOwnedShop(ownerUserId);
-  const product = await requireOwnedProduct(ownerUserId, productId);
+export async function getItemShare(ownerUserId: string, merchantId: string, productId: string) {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
+  const product = await requireOwnedProduct(ownerUserId, merchantId, productId);
   await ensureDefaultIntegrations(shop.id);
   const [integrations, publications] = await Promise.all([
     listIntegrations(getPool(), shop.id),
@@ -547,7 +561,7 @@ export async function getItemShare(ownerUserId: string, productId: string) {
   const caption = defaultCaption({
     title: product.title,
     priceLabel: formatNairaLabel(product.price_kobo),
-    shopName: shop.name,
+    merchantName: shop.name,
     url,
   });
   return {
@@ -568,13 +582,13 @@ export async function getItemShare(ownerUserId: string, productId: string) {
 }
 
 export async function recordOrderNotification(input: {
-  shopId: string;
+  merchantId: string;
   orderId: string;
   templateKey: string;
   vars: Record<string, string>;
   recipient: string | null;
 }): Promise<{ body: string; detail: string; simulated: boolean }> {
-  const settings = await getWhatsAppSettings(getPool(), input.shopId);
+  const settings = await getWhatsAppSettings(getPool(), input.merchantId);
   const template = settings?.templates?.[input.templateKey] ?? `Update: {{reference}}`;
   const body = renderTemplate(template, input.vars);
   const to = input.recipient ?? settings?.contact_number ?? "unknown";
@@ -584,7 +598,7 @@ export async function recordOrderNotification(input: {
     body,
   });
   await insertNotificationEvent(getPool(), {
-    shopId: input.shopId,
+    merchantId: input.merchantId,
     orderId: input.orderId,
     channel: "whatsapp",
     templateKey: input.templateKey,
@@ -596,8 +610,8 @@ export async function recordOrderNotification(input: {
   return { body, detail: result.detail, simulated: result.simulated };
 }
 
-export async function listMyActivity(ownerUserId: string) {
-  const shop = await requireOwnedShop(ownerUserId);
+export async function listMyActivity(ownerUserId: string, merchantId: string) {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   const events = await listNotificationEvents(getPool(), shop.id, 50);
   return events.map((e) => ({
     id: e.id,
@@ -620,22 +634,14 @@ export function getUploadsDir(): string {
 }
 
 export async function saveMerchantMedia(dataUrl: string): Promise<{ url: string }> {
-  const match = /^data:(image\/(png|jpeg|jpg|webp|gif));base64,(.+)$/i.exec(dataUrl.replace(/\s/g, ""));
-  if (!match?.[1] || !match[2] || !match[3]) {
-    throw badRequest("Use a PNG, JPEG, WebP, or GIF data URL");
+  try {
+    const result = await resolveMediaProvider(uploadsDir).upload({ dataUrl, maxBytes: 4_000_000 });
+    return { url: result.url };
+  } catch (err) {
+    throw badRequest(err instanceof Error ? err.message : "Could not save media");
   }
-  const sub = match[2].toLowerCase();
-  const ext = sub === "jpeg" || sub === "jpg" ? "jpg" : sub;
-  const buf = Buffer.from(match[3], "base64");
-  if (buf.length > 4_000_000) {
-    throw badRequest("Image is too large (max 4MB)");
-  }
-  await mkdir(uploadsDir, { recursive: true });
-  const name = `${randomUUID()}.${ext}`;
-  await writeFile(path.join(uploadsDir, name), buf);
-  return { url: `/uploads/${name}` };
 }
 
-export { findShopBySlug, findProductById, findShopByOwner, findShopById };
-export { decrementProductStock, getWhatsAppSettings } from "./shop.repository.js";
-export type { IntegrationChannel, ShopRow, ProductRow } from "./shop.repository.js";
+export { findMerchantBySlug, findProductById, listMerchantsByOwner, findMerchantById, findMerchantByOwnerAndId };
+export { decrementProductStock, getWhatsAppSettings } from "./merchant.repository.js";
+export type { IntegrationChannel, MerchantRow, ProductRow } from "./merchant.repository.js";

@@ -196,8 +196,8 @@ async function main() {
   try {
     await client.query("BEGIN");
     await client.query(
-      `TRUNCATE notification_events, shop_payments, shop_order_items, shop_orders,
-         catalog_publications, shop_whatsapp_settings, shop_integrations, products, shops CASCADE`,
+      `TRUNCATE notification_events, merchant_payments, merchant_order_items, merchant_orders,
+         catalog_publications, merchant_whatsapp_settings, merchant_integrations, products, merchants CASCADE`,
     );
     await client.query(`DELETE FROM users WHERE email LIKE '%@demo.ansa'`);
 
@@ -208,36 +208,36 @@ async function main() {
       );
       const s = m.shop;
       const shop = await client.query<{ id: string }>(
-        `INSERT INTO shops (owner_user_id, name, slug, description, category, phone, whatsapp, location,
+        `INSERT INTO merchants (owner_user_id, name, slug, description, category, phone, whatsapp, location,
            logo_url, cover_url, instagram_handle, tiktok_handle, x_handle, onboarding_completed_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now()) RETURNING id`,
         [user.rows[0]!.id, s.name, s.slug, s.description, s.category, s.phone, s.whatsapp, s.location,
           s.logo, s.cover, s.instagram, s.tiktok, s.x],
       );
-      const shopId = shop.rows[0]!.id;
+      const merchantId = shop.rows[0]!.id;
 
       for (const channel of ["whatsapp", "instagram", "tiktok", "x"]) {
         const connected = channel === "whatsapp" || (mi === 0 && channel === "instagram");
         await client.query(
-          `INSERT INTO shop_integrations (shop_id, channel, status, provider, external_account, connected_at)
+          `INSERT INTO merchant_integrations (merchant_id, channel, status, provider, external_account, connected_at)
            VALUES ($1,$2,$3,'mock',$4, CASE WHEN $5 THEN now() ELSE NULL END)`,
-          [shopId, channel, connected ? "connected" : "not_connected",
+          [merchantId, channel, connected ? "connected" : "not_connected",
             connected ? (channel === "whatsapp" ? s.whatsapp : `@${s.instagram}`) : null, connected],
         );
       }
       await client.query(
-        `INSERT INTO shop_whatsapp_settings (shop_id, contact_number) VALUES ($1, $2)`,
-        [shopId, s.whatsapp],
+        `INSERT INTO merchant_whatsapp_settings (merchant_id, contact_number) VALUES ($1, $2)`,
+        [merchantId, s.whatsapp],
       );
 
       const productIds: { id: string; title: string; kind: "product" | "service"; price: number }[] = [];
       for (const [i, it] of m.items.entries()) {
         const p = await client.query<{ id: string }>(
-          `INSERT INTO products (shop_id, title, slug, description, price_kobo, compare_at_kobo, status, image_urls,
+          `INSERT INTO products (merchant_id, title, slug, description, price_kobo, compare_at_kobo, status, image_urls,
              kind, qty_available, category, duration_minutes, availability_note, sku, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now() - ($15 || ' hours')::interval)
            RETURNING id`,
-          [shopId, it.title, it.slug, it.description, it.priceKobo, it.compareAtKobo ?? null,
+          [merchantId, it.title, it.slug, it.description, it.priceKobo, it.compareAtKobo ?? null,
             it.status ?? "published", [it.image], it.kind, it.qty, it.category, it.durationMinutes ?? null,
             it.availabilityNote ?? null, it.kind === "product" ? `${s.slug.slice(0, 3).toUpperCase()}-${100 + i}` : null,
             String(i * 5)],
@@ -259,23 +259,23 @@ async function main() {
         const subtotal = line.price * qty;
         const ref = `ANSA-${(0xa10000 + mi * 4096 + o * 97).toString(16).toUpperCase().slice(-6)}`;
         const order = await client.query<{ id: string }>(
-          `INSERT INTO shop_orders (shop_id, reference, customer_name, customer_phone, customer_email, fulfilment,
+          `INSERT INTO merchant_orders (merchant_id, reference, customer_name, customer_phone, customer_email, fulfilment,
              delivery_address, delivery_fee_kobo, subtotal_kobo, total_kobo, payment_status, order_status,
              payment_provider, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'mock', now() - ($13 || ' hours')::interval)
            RETURNING id`,
-          [shopId, ref, c.name, c.phone, c.email, delivery ? "delivery" : "pickup",
+          [merchantId, ref, c.name, c.phone, c.email, delivery ? "delivery" : "pickup",
             delivery ? "12 Admiralty Way, Lekki Phase 1, Lagos" : null, fee, subtotal, subtotal + fee,
             paid ? "paid" : "pending", status, String(o * 19 + 2)],
         );
         const orderId = order.rows[0]!.id;
         await client.query(
-          `INSERT INTO shop_order_items (order_id, product_id, title, kind, quantity, unit_price_kobo)
+          `INSERT INTO merchant_order_items (order_id, product_id, title, kind, quantity, unit_price_kobo)
            VALUES ($1,$2,$3,$4,$5,$6)`,
           [orderId, line.id, line.title, line.kind, qty, line.price],
         );
         await client.query(
-          `INSERT INTO shop_payments (order_id, provider, status, amount_kobo, idempotency_key, simulated)
+          `INSERT INTO merchant_payments (order_id, provider, status, amount_kobo, idempotency_key, simulated)
            VALUES ($1,'mock',$2,$3,$4,true)`,
           [orderId, paid ? "paid" : "pending", subtotal + fee, `pay:${orderId}`],
         );
@@ -285,9 +285,9 @@ async function main() {
             [line.id, qty],
           );
           await client.query(
-            `INSERT INTO notification_events (shop_id, order_id, channel, template_key, status, provider, body, recipient, created_at)
+            `INSERT INTO notification_events (merchant_id, order_id, channel, template_key, status, provider, body, recipient, created_at)
              VALUES ($1,$2,'whatsapp','payment_confirmed','simulated','mock',$3,$4, now() - ($5 || ' hours')::interval)`,
-            [shopId, orderId, `Payment confirmed for ${ref}. Thank you, ${c.name}.`, c.phone, String(o * 19 + 1)],
+            [merchantId, orderId, `Payment confirmed for ${ref}. Thank you, ${c.name}.`, c.phone, String(o * 19 + 1)],
           );
         }
       }

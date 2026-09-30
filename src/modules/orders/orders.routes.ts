@@ -21,7 +21,7 @@ const slug = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
 export const checkoutSchema = z.object({
-  shopSlug: slug,
+  merchantSlug: slug,
   items: z
     .array(
       z.object({
@@ -81,13 +81,14 @@ const orderStatusSchema = z.object({
   ]),
 });
 
-export const merchantOrdersRouter = Router();
+export const merchantOrdersRouter = Router({ mergeParams: true });
 merchantOrdersRouter.use(requireAuth);
 
 merchantOrdersRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    sendData(res, { orders: await listMerchantOrders(req.userId as string) });
+    const merchantId = req.params.merchantId as string;
+    sendData(res, { orders: await listMerchantOrders(req.userId as string, merchantId) });
   }),
 );
 
@@ -95,7 +96,8 @@ merchantOrdersRouter.get(
   "/:orderId",
   validate(z.object({ orderId: z.string().uuid() }), "params"),
   asyncHandler(async (req, res) => {
-    sendData(res, { order: await getMerchantOrder(req.userId as string, req.params.orderId as string) });
+    const merchantId = req.params.merchantId as string;
+    sendData(res, { order: await getMerchantOrder(req.userId as string, merchantId, req.params.orderId as string) });
   }),
 );
 
@@ -104,6 +106,7 @@ merchantOrdersRouter.patch(
   validate(z.object({ orderId: z.string().uuid() }), "params"),
   validate(orderStatusSchema),
   asyncHandler(async (req, res) => {
-    sendData(res, await changeOrderStatus(req.userId as string, req.params.orderId as string, req.body.status));
+    const merchantId = req.params.merchantId as string;
+    sendData(res, await changeOrderStatus(req.userId as string, merchantId, req.params.orderId as string, req.body.status));
   }),
 );

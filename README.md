@@ -48,10 +48,10 @@ Default local URL: `http://localhost:5000` (`PORT` in `.env`). Leave 3000 for we
 
 Empty shells (`delivery`, `jobs`, …) exist as folders only. Do not mount them until they have real routes.
 
-Shop prototype (mounted): merchant `/v1/me/shop/*`, orders `/v1/me/shop/orders`, checkout `/v1/checkout`, public `/v1/shops/:slug`, orders `/v1/orders/:reference`, mock pay `/v1/payments/mock/complete`. Prices are integer **kobo**. Run `pnpm seed` in `ansa-api` for demo data.
+Merchant prototype (mounted): `GET|POST /v1/me/merchants`, scoped `/v1/me/merchants/:merchantId/*` (catalog, media, integrations), orders `/v1/me/merchants/:merchantId/orders`, checkout `/v1/checkout`, public `/v1/merchants/:merchantSlug` (+ products), orders `/v1/orders/:reference`, mock pay `/v1/payments/mock/complete`. One ansa ID may own multiple merchants. Prices are integer **kobo**. Payment provider direction: **mock** (dev) or **flutterwave** when configured. Run `pnpm seed` in `ansa-api` for demo data.
 
 ## Module boundaries
 
 Cross-module work goes through each module’s public `index.ts` / service. Do not query another module’s tables from a repository.
 
-`users.id` is the v1 ansa ID. Payments are orchestration only; no provider is wired yet.
+`users.id` is the v1 ansa ID. Payments are orchestration only (mock default; Flutterwave initialize prototype when `FLUTTERWAVE_SECRET_KEY` is set).

@@ -14,7 +14,7 @@ export type Fulfilment = "pickup" | "delivery";
 
 export type OrderRow = {
   id: string;
-  shop_id: string;
+  merchant_id: string;
   reference: string;
   customer_name: string;
   customer_phone: string;
@@ -43,14 +43,14 @@ export type OrderItemRow = {
   unit_price_kobo: number;
 };
 
-const ORDER_COLS = `id, shop_id, reference, customer_name, customer_phone, customer_email, fulfilment,
+const ORDER_COLS = `id, merchant_id, reference, customer_name, customer_phone, customer_email, fulfilment,
   delivery_address, delivery_instructions, delivery_fee_kobo, subtotal_kobo, total_kobo, payment_status,
   order_status, payment_provider, payment_id, created_at, updated_at`;
 
 export async function insertOrder(
   db: Queryable,
   input: {
-    shopId: string;
+    merchantId: string;
     reference: string;
     customerName: string;
     customerPhone: string;
@@ -67,15 +67,15 @@ export async function insertOrder(
   },
 ): Promise<OrderRow> {
   const { rows } = await db.query<OrderRow>(
-    `INSERT INTO shop_orders (
-       shop_id, reference, customer_name, customer_phone, customer_email, fulfilment,
+    `INSERT INTO merchant_orders (
+       merchant_id, reference, customer_name, customer_phone, customer_email, fulfilment,
        delivery_address, delivery_instructions, delivery_fee_kobo, subtotal_kobo, total_kobo,
        payment_status, order_status, payment_provider
      )
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING ${ORDER_COLS}`,
     [
-      input.shopId,
+      input.merchantId,
       input.reference,
       input.customerName,
       input.customerPhone,
@@ -108,7 +108,7 @@ export async function insertOrderItem(
   },
 ): Promise<OrderItemRow> {
   const { rows } = await db.query<OrderItemRow>(
-    `INSERT INTO shop_order_items (order_id, product_id, title, kind, quantity, unit_price_kobo)
+    `INSERT INTO merchant_order_items (order_id, product_id, title, kind, quantity, unit_price_kobo)
      VALUES ($1,$2,$3,$4,$5,$6)
      RETURNING id, order_id, product_id, title, kind, quantity, unit_price_kobo`,
     [input.orderId, input.productId, input.title, input.kind, input.quantity, input.unitPriceKobo],
@@ -119,21 +119,21 @@ export async function insertOrderItem(
 }
 
 export async function findOrderById(db: Queryable, id: string): Promise<OrderRow | undefined> {
-  const { rows } = await db.query<OrderRow>(`SELECT ${ORDER_COLS} FROM shop_orders WHERE id = $1`, [id]);
+  const { rows } = await db.query<OrderRow>(`SELECT ${ORDER_COLS} FROM merchant_orders WHERE id = $1`, [id]);
   return rows[0];
 }
 
 export async function findOrderByReference(db: Queryable, reference: string): Promise<OrderRow | undefined> {
-  const { rows } = await db.query<OrderRow>(`SELECT ${ORDER_COLS} FROM shop_orders WHERE reference = $1`, [
+  const { rows } = await db.query<OrderRow>(`SELECT ${ORDER_COLS} FROM merchant_orders WHERE reference = $1`, [
     reference,
   ]);
   return rows[0];
 }
 
-export async function listOrdersByShop(db: Queryable, shopId: string): Promise<OrderRow[]> {
+export async function listOrdersByMerchant(db: Queryable, merchantId: string): Promise<OrderRow[]> {
   const { rows } = await db.query<OrderRow>(
-    `SELECT ${ORDER_COLS} FROM shop_orders WHERE shop_id = $1 ORDER BY created_at DESC`,
-    [shopId],
+    `SELECT ${ORDER_COLS} FROM merchant_orders WHERE merchant_id = $1 ORDER BY created_at DESC`,
+    [merchantId],
   );
   return rows;
 }
@@ -141,7 +141,7 @@ export async function listOrdersByShop(db: Queryable, shopId: string): Promise<O
 export async function listOrderItems(db: Queryable, orderId: string): Promise<OrderItemRow[]> {
   const { rows } = await db.query<OrderItemRow>(
     `SELECT id, order_id, product_id, title, kind, quantity, unit_price_kobo
-     FROM shop_order_items WHERE order_id = $1`,
+     FROM merchant_order_items WHERE order_id = $1`,
     [orderId],
   );
   return rows;
@@ -153,7 +153,7 @@ export async function updateOrderPayment(
   patch: { paymentStatus: PaymentStatus; orderStatus?: OrderStatus; paymentId?: string; paymentProvider?: string },
 ): Promise<OrderRow> {
   const { rows } = await db.query<OrderRow>(
-    `UPDATE shop_orders
+    `UPDATE merchant_orders
      SET payment_status = $2,
          order_status = COALESCE($3, order_status),
          payment_id = COALESCE($4, payment_id),
@@ -170,7 +170,7 @@ export async function updateOrderPayment(
 
 export async function updateOrderStatus(db: Queryable, orderId: string, status: OrderStatus): Promise<OrderRow> {
   const { rows } = await db.query<OrderRow>(
-    `UPDATE shop_orders SET order_status = $2, updated_at = now() WHERE id = $1 RETURNING ${ORDER_COLS}`,
+    `UPDATE merchant_orders SET order_status = $2, updated_at = now() WHERE id = $1 RETURNING ${ORDER_COLS}`,
     [orderId, status],
   );
   const row = rows[0];
@@ -191,7 +191,7 @@ export async function insertPayment(
   },
 ) {
   const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO shop_payments (order_id, provider, status, amount_kobo, idempotency_key, provider_reference, simulated)
+    `INSERT INTO merchant_payments (order_id, provider, status, amount_kobo, idempotency_key, provider_reference, simulated)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
      RETURNING id`,
     [
@@ -208,10 +208,10 @@ export async function insertPayment(
 }
 
 export async function markPaymentPaid(db: Queryable, orderId: string): Promise<void> {
-  await db.query(`UPDATE shop_payments SET status = 'paid', updated_at = now() WHERE order_id = $1`, [orderId]);
+  await db.query(`UPDATE merchant_payments SET status = 'paid', updated_at = now() WHERE order_id = $1`, [orderId]);
 }
 
-export async function shopOrderStats(db: Queryable, shopId: string) {
+export async function merchantOrderStats(db: Queryable, merchantId: string) {
   const { rows } = await db.query<{
     order_count: string;
     paid_count: string;
@@ -221,8 +221,8 @@ export async function shopOrderStats(db: Queryable, shopId: string) {
        COUNT(*)::text AS order_count,
        COUNT(*) FILTER (WHERE payment_status = 'paid')::text AS paid_count,
        COALESCE(SUM(total_kobo) FILTER (WHERE payment_status = 'paid'), 0)::text AS revenue_kobo
-     FROM shop_orders WHERE shop_id = $1`,
-    [shopId],
+     FROM merchant_orders WHERE merchant_id = $1`,
+    [merchantId],
   );
   const row = rows[0]!;
   return {
@@ -232,7 +232,7 @@ export async function shopOrderStats(db: Queryable, shopId: string) {
   };
 }
 
-export async function listCustomers(db: Queryable, shopId: string) {
+export async function listCustomers(db: Queryable, merchantId: string) {
   const { rows } = await db.query<{
     customer_name: string;
     customer_phone: string;
@@ -245,11 +245,11 @@ export async function listCustomers(db: Queryable, shopId: string) {
             COUNT(*)::text AS orders,
             COALESCE(SUM(total_kobo) FILTER (WHERE payment_status = 'paid'), 0)::text AS spent_kobo,
             MAX(created_at) AS last_order
-     FROM shop_orders
-     WHERE shop_id = $1
+     FROM merchant_orders
+     WHERE merchant_id = $1
      GROUP BY customer_name, customer_phone, customer_email
      ORDER BY last_order DESC`,
-    [shopId],
+    [merchantId],
   );
   return rows.map((r) => ({
     name: r.customer_name,
