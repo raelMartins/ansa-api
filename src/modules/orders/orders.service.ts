@@ -276,10 +276,24 @@ const STATUS_TEMPLATE: Partial<Record<OrderStatus, string>> = {
   cancelled: "order_cancelled",
 };
 
+const TERMINAL_ORDER_STATUSES: OrderStatus[] = ["delivered", "cancelled"];
+
+const FULFILMENT_STATUSES: OrderStatus[] = ["confirmed", "processing", "ready", "out_for_delivery", "delivered"];
+
 export async function changeOrderStatus(ownerUserId: string, merchantId: string, orderId: string, status: OrderStatus) {
   const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   const order = await findOrderById(getPool(), orderId);
   if (!order || order.merchant_id !== shop.id) throw notFound("Order not found");
+  if (TERMINAL_ORDER_STATUSES.includes(order.order_status)) {
+    throw conflict("This order can no longer be updated");
+  }
+  if (status === order.order_status) {
+    const items = await listOrderItems(getPool(), order.id);
+    return { order: toPublicOrder(order, items, shop.name), notification: null };
+  }
+  if (FULFILMENT_STATUSES.includes(status) && order.payment_status !== "paid") {
+    throw badRequest("Payment must be completed before updating fulfilment");
+  }
   const updated = await updateOrderStatus(getPool(), orderId, status);
   const templateKey = STATUS_TEMPLATE[status];
   let notification = null;
