@@ -281,18 +281,24 @@ export async function merchantDashboardMetrics(db: Queryable, merchantId: string
   };
 }
 
+const customerIdentitySql = `customer_name = $2 AND customer_phone = $3 AND customer_email IS NOT DISTINCT FROM $4`;
+
 export async function listCustomers(db: Queryable, merchantId: string) {
   const { rows } = await db.query<{
     customer_name: string;
     customer_phone: string;
     customer_email: string | null;
     orders: string;
+    paid_orders: string;
     spent_kobo: string;
+    first_order: Date;
     last_order: Date;
   }>(
     `SELECT customer_name, customer_phone, customer_email,
             COUNT(*)::text AS orders,
+            COUNT(*) FILTER (WHERE payment_status = 'paid')::text AS paid_orders,
             COALESCE(SUM(total_kobo) FILTER (WHERE payment_status = 'paid'), 0)::text AS spent_kobo,
+            MIN(created_at) AS first_order,
             MAX(created_at) AS last_order
      FROM merchant_orders
      WHERE merchant_id = $1
@@ -305,7 +311,75 @@ export async function listCustomers(db: Queryable, merchantId: string) {
     phone: r.customer_phone,
     email: r.customer_email,
     orders: Number(r.orders),
+    paidOrders: Number(r.paid_orders),
     spentKobo: Number(r.spent_kobo),
+    firstOrderAt: r.first_order.toISOString(),
     lastOrderAt: r.last_order.toISOString(),
   }));
+}
+
+export type CustomerIdentityInput = {
+  name: string;
+  phone: string;
+  email: string | null;
+};
+
+export async function findCustomerAggregate(db: Queryable, merchantId: string, identity: CustomerIdentityInput) {
+  const { rows } = await db.query<{
+    customer_name: string;
+    customer_phone: string;
+    customer_email: string | null;
+    orders: string;
+    paid_orders: string;
+    spent_kobo: string;
+    first_order: Date;
+    last_order: Date;
+    latest_delivery_address: string | null;
+  }>(
+    `SELECT customer_name, customer_phone, customer_email,
+            COUNT(*)::text AS orders,
+            COUNT(*) FILTER (WHERE payment_status = 'paid')::text AS paid_orders,
+            COALESCE(SUM(total_kobo) FILTER (WHERE payment_status = 'paid'), 0)::text AS spent_kobo,
+            MIN(created_at) AS first_order,
+            MAX(created_at) AS last_order,
+            (
+              SELECT delivery_address FROM merchant_orders o2
+              WHERE o2.merchant_id = $1
+                AND o2.customer_name = merchant_orders.customer_name
+                AND o2.customer_phone = merchant_orders.customer_phone
+                AND o2.customer_email IS NOT DISTINCT FROM merchant_orders.customer_email
+                AND o2.delivery_address IS NOT NULL
+                AND TRIM(o2.delivery_address) <> ''
+              ORDER BY o2.created_at DESC
+              LIMIT 1
+            ) AS latest_delivery_address
+     FROM merchant_orders
+     WHERE merchant_id = $1 AND ${customerIdentitySql}
+     GROUP BY customer_name, customer_phone, customer_email`,
+    [merchantId, identity.name, identity.phone, identity.email],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    name: r.customer_name,
+    phone: r.customer_phone,
+    email: r.customer_email,
+    orders: Number(r.orders),
+    paidOrders: Number(r.paid_orders),
+    spentKobo: Number(r.spent_kobo),
+    firstOrderAt: r.first_order.toISOString(),
+    lastOrderAt: r.last_order.toISOString(),
+    latestDeliveryAddress: r.latest_delivery_address,
+  };
+}
+
+export async function listOrdersForCustomer(db: Queryable, merchantId: string, identity: CustomerIdentityInput) {
+  const { rows } = await db.query<OrderRow>(
+    `SELECT * FROM merchant_orders
+     WHERE merchant_id = $1 AND ${customerIdentitySql}
+     ORDER BY created_at DESC
+     LIMIT 100`,
+    [merchantId, identity.name, identity.phone, identity.email],
+  );
+  return rows;
 }

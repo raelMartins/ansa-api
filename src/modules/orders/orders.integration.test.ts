@@ -133,4 +133,52 @@ describe("merchant orders", () => {
       .send({ status: "processing" });
     expect(afterTerminal.status).toBe(409);
   });
+
+  it("lists customers and returns detail with order history", async () => {
+    const token = await register("customers-flow@example.com");
+    const created = await request(app).post("/v1/me/merchants").set(auth(token)).send({ name: "Buyer Shop" });
+    const merchantId = created.body.data.merchant.id as string;
+    const slug = created.body.data.merchant.slug as string;
+
+    const productRes = await request(app)
+      .post(`/v1/me/merchants/${merchantId}/products`)
+      .set(auth(token))
+      .send({ title: "Scarf", priceKobo: 100000, status: "published", qtyAvailable: 5 });
+    const productId = productRes.body.data.product.id as string;
+
+    const checkout = await request(app)
+      .post("/v1/checkout")
+      .send({
+        merchantSlug: slug,
+        items: [{ productId, quantity: 1 }],
+        customerName: "Chioma Okafor",
+        customerPhone: "+2348099988776",
+        fulfilment: "pickup",
+      });
+    const orderId = checkout.body.data.order.id as string;
+    await request(app).post("/v1/payments/mock/complete").send({ orderId });
+
+    const list = await request(app).get(`/v1/me/merchants/${merchantId}/customers`).set(auth(token));
+    expect(list.status).toBe(200);
+    expect(list.body.data.customers).toHaveLength(1);
+    expect(list.body.data.customers[0].name).toBe("Chioma Okafor");
+    expect(list.body.data.customers[0].orders).toBe(1);
+    expect(list.body.data.customers[0].firstOrderAt).toBeTruthy();
+
+    const buyerEmail = list.body.data.customers[0].email as string | null;
+    const detailQuery: Record<string, string> = {
+      name: "Chioma Okafor",
+      phone: "+2348099988776",
+    };
+    if (buyerEmail) detailQuery.email = buyerEmail;
+    const detail = await request(app)
+      .get(`/v1/me/merchants/${merchantId}/customers/detail`)
+      .query(detailQuery)
+      .set(auth(token));
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.customer.spentKobo).toBe(100000);
+    expect(detail.body.data.orders).toHaveLength(1);
+    expect(detail.body.data.orders[0].id).toBe(orderId);
+    expect(detail.body.data.customer.isGuest).toBe(true);
+  });
 });

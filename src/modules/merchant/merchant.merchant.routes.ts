@@ -4,7 +4,7 @@ import { asyncHandler } from "../../shared/async-handler.js";
 import { sendData } from "../../shared/http.js";
 import { validate } from "../../shared/middleware/validate.js";
 import { requireAuth } from "../auth/index.js";
-import { merchantCustomers, merchantOverview } from "../orders/orders.service.js";
+import { merchantCustomerDetail, merchantCustomers, merchantOverview } from "../orders/orders.service.js";
 import {
   archiveMyProduct,
   createProduct,
@@ -64,6 +64,32 @@ merchantScopedRouter.get(
   asyncHandler(async (req, res) => {
     const merchantId = req.params.merchantId as string;
     sendData(res, await merchantOverview(req.userId as string, merchantId));
+  }),
+);
+
+const customerDetailQuerySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  phone: z.string().trim().min(7).max(24),
+  email: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.string().trim().email().optional(),
+  ),
+});
+
+merchantScopedRouter.get(
+  "/customers/detail",
+  validate(customerDetailQuerySchema, "query"),
+  asyncHandler(async (req, res) => {
+    const merchantId = req.params.merchantId as string;
+    const q = req.query as { name: string; phone: string; email?: string };
+    sendData(
+      res,
+      await merchantCustomerDetail(req.userId as string, merchantId, {
+        name: q.name,
+        phone: q.phone,
+        email: q.email ?? null,
+      }),
+    );
   }),
 );
 

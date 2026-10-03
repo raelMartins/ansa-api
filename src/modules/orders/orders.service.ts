@@ -19,7 +19,9 @@ import {
   insertOrder,
   insertOrderItem,
   insertPayment,
+  findCustomerAggregate,
   listCustomers,
+  listOrdersForCustomer,
   listOrderItems,
   listOrdersByMerchant,
   markPaymentPaid,
@@ -361,4 +363,42 @@ export async function merchantOverview(ownerUserId: string, merchantId: string) 
 export async function merchantCustomers(ownerUserId: string, merchantId: string) {
   const shop = await requireOwnedMerchant(ownerUserId, merchantId);
   return listCustomers(getPool(), shop.id);
+}
+
+function isGuestCustomerEmail(email: string | null): boolean {
+  return !email || email.endsWith("@guest.ansa.local");
+}
+
+function toPublicOrderSummary(order: OrderRow) {
+  return {
+    id: order.id,
+    reference: order.reference,
+    customerName: order.customer_name,
+    customerPhone: order.customer_phone,
+    totalKobo: order.total_kobo,
+    paymentStatus: order.payment_status,
+    orderStatus: order.order_status,
+    createdAt: order.created_at.toISOString(),
+  };
+}
+
+export async function merchantCustomerDetail(
+  ownerUserId: string,
+  merchantId: string,
+  identity: { name: string; phone: string; email?: string | null },
+) {
+  const shop = await requireOwnedMerchant(ownerUserId, merchantId);
+  const email = identity.email?.trim() || null;
+  const name = identity.name.trim();
+  const phone = identity.phone.trim();
+  const agg = await findCustomerAggregate(getPool(), shop.id, { name, phone, email });
+  if (!agg) throw notFound("Customer not found");
+  const orderRows = await listOrdersForCustomer(getPool(), shop.id, { name, phone, email: agg.email });
+  return {
+    customer: {
+      ...agg,
+      isGuest: isGuestCustomerEmail(agg.email),
+    },
+    orders: orderRows.map((o) => toPublicOrderSummary(o)),
+  };
 }
