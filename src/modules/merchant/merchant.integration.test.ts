@@ -86,4 +86,17 @@ describe("merchant vertical slice", () => {
       .set(auth(otherToken));
     expect(otherSees.status).toBe(404);
   });
+
+  it("returns merchant overview aggregates", async () => {
+    const token = await register("overview@example.com");
+    const created = await request(app).post("/v1/me/merchants").set(auth(token)).send({ name: "Overview Shop", location: "Lagos" });
+    const merchantId = created.body.data.merchant.id as string;
+
+    const overview = await request(app).get(`/v1/me/merchants/${merchantId}/overview`).set(auth(token));
+    expect(overview.status).toBe(200);
+    expect(overview.body.data.merchant.name).toBe("Overview Shop");
+    expect(overview.body.data.salesMonthKobo).toBe(0);
+    expect(overview.body.data.recentOrders).toEqual([]);
+    expect(overview.body.data.generatedAt).toBeTruthy();
+  });
 });

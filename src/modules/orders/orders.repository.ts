@@ -232,6 +232,55 @@ export async function merchantOrderStats(db: Queryable, merchantId: string) {
   };
 }
 
+export async function merchantDashboardMetrics(db: Queryable, merchantId: string) {
+  const { rows } = await db.query<{
+    sales_month_kobo: string;
+    sales_prev_month_kobo: string;
+    sold_orders_month: string;
+    to_fulfill: string;
+    ready_for_pickup: string;
+    customer_count: string;
+    new_customers_month: string;
+  }>(
+    `SELECT
+       COALESCE(SUM(total_kobo) FILTER (
+         WHERE payment_status = 'paid'
+           AND created_at >= date_trunc('month', timezone('UTC', now()))
+       ), 0)::text AS sales_month_kobo,
+       COALESCE(SUM(total_kobo) FILTER (
+         WHERE payment_status = 'paid'
+           AND created_at >= date_trunc('month', timezone('UTC', now()) - interval '1 month')
+           AND created_at < date_trunc('month', timezone('UTC', now()))
+       ), 0)::text AS sales_prev_month_kobo,
+       COUNT(*) FILTER (
+         WHERE payment_status = 'paid'
+           AND created_at >= date_trunc('month', timezone('UTC', now()))
+       )::text AS sold_orders_month,
+       COUNT(*) FILTER (
+         WHERE payment_status = 'paid'
+           AND order_status IN ('pending', 'confirmed', 'processing')
+       )::text AS to_fulfill,
+       COUNT(*) FILTER (WHERE order_status = 'ready')::text AS ready_for_pickup,
+       COUNT(DISTINCT customer_phone)::text AS customer_count,
+       COUNT(DISTINCT customer_phone) FILTER (
+         WHERE created_at >= date_trunc('month', timezone('UTC', now()))
+       )::text AS new_customers_month
+     FROM merchant_orders
+     WHERE merchant_id = $1`,
+    [merchantId],
+  );
+  const row = rows[0]!;
+  return {
+    salesMonthKobo: Number(row.sales_month_kobo),
+    salesPrevMonthKobo: Number(row.sales_prev_month_kobo),
+    soldOrdersMonth: Number(row.sold_orders_month),
+    toFulfill: Number(row.to_fulfill),
+    readyForPickup: Number(row.ready_for_pickup),
+    customerCount: Number(row.customer_count),
+    newCustomersMonth: Number(row.new_customers_month),
+  };
+}
+
 export async function listCustomers(db: Queryable, merchantId: string) {
   const { rows } = await db.query<{
     customer_name: string;

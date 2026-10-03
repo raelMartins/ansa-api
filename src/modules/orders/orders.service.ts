@@ -23,6 +23,7 @@ import {
   listOrderItems,
   listOrdersByMerchant,
   markPaymentPaid,
+  merchantDashboardMetrics,
   merchantOrderStats,
   updateOrderPayment,
   updateOrderStatus,
@@ -302,29 +303,44 @@ export async function changeOrderStatus(ownerUserId: string, merchantId: string,
 
 export async function merchantOverview(ownerUserId: string, merchantId: string) {
   const shop = await requireOwnedMerchant(ownerUserId, merchantId);
-  const stats = await merchantOrderStats(getPool(), shop.id);
-  const products = await listProductsByMerchant(getPool(), shop.id);
-  const recentOrders = (await listOrdersByMerchant(getPool(), shop.id)).slice(0, 6);
+  const db = getPool();
+  const stats = await merchantOrderStats(db, shop.id);
+  const dashboard = await merchantDashboardMetrics(db, shop.id);
+  const products = await listProductsByMerchant(db, shop.id);
+  const recentOrders = (await listOrdersByMerchant(db, shop.id)).slice(0, 6);
   const withItems = [];
   for (const order of recentOrders) {
-    const items = await listOrderItems(getPool(), order.id);
+    const items = await listOrderItems(db, order.id);
     withItems.push(toPublicOrder(order, items, shop.name));
   }
   const published = products.filter((p) => p.status === "published").length;
   const lowStock = products.filter((p) => p.kind === "product" && p.qty_available <= 3 && p.status !== "archived").length;
+  const prev = dashboard.salesPrevMonthKobo;
+  const salesMonthDeltaPct =
+    prev > 0 ? Math.round(((dashboard.salesMonthKobo - prev) / prev) * 1000) / 10 : dashboard.salesMonthKobo > 0 ? null : 0;
   return {
     merchant: {
       id: shop.id,
       name: shop.name,
       slug: shop.slug,
+      location: shop.location,
+      category: shop.category,
     },
     salesKobo: stats.revenueKobo,
+    salesMonthKobo: dashboard.salesMonthKobo,
+    salesMonthDeltaPct,
+    soldOrdersMonth: dashboard.soldOrdersMonth,
     orders: stats.orderCount,
     paidOrders: stats.paidCount,
+    toFulfill: dashboard.toFulfill,
+    readyForPickup: dashboard.readyForPickup,
+    customerCount: dashboard.customerCount,
+    newCustomersMonth: dashboard.newCustomersMonth,
     products: products.length,
     published,
     lowStock,
     recentOrders: withItems,
+    generatedAt: new Date().toISOString(),
   };
 }
 
